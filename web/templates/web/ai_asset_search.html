@@ -1,0 +1,47 @@
+{% extends "web/base.html" %}
+
+{% block title %}AI 자산검색 | ITAM 포털{% endblock %}
+
+{% block content %}
+<h2>AI 자산검색</h2>
+<p class="muted">RAG 확장 전 단계의 검색 뼈대 화면입니다. 인덱스 생성 후 유사도 검색 결과를 확인할 수 있습니다.</p>
+
+<form class="search-box" method="get">
+    <input type="text" name="q" value="{{ q }}" placeholder="예: 샘플시스템 AWS DB">
+    <button type="submit">검색</button>
+</form>
+
+{% if error %}
+<div class="error">{{ error }}</div>
+{% endif %}
+
+<div class="muted">결과건수: {{ results|length }}건</div>
+<div class="wrap">
+    <table>
+        <thead>
+            <tr>
+                <th>#</th>
+                <th>점수</th>
+                <th>유형</th>
+                <th>이름</th>
+                <th>텍스트</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for r in results %}
+            <tr>
+                <td>{{ forloop.counter }}</td>
+                <td>{{ r.score|floatformat:4 }}</td>
+                <td>{{ r.meta.type }}</td>
+                <td>{{ r.meta.name }}</td>
+                <td>{{ r.text }}</td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="5">검색 결과가 없습니다.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

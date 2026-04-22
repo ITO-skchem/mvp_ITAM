@@ -1,0 +1,75 @@
+{% extends "web/base.html" %}
+
+{% block title %}메인 | ITAM 포털{% endblock %}
+
+{% block content %}
+<h2>운영 메뉴</h2>
+<p class="muted">주요 운영 링크를 통해 자산 및 기준정보를 관리할 수 있습니다.</p>
+
+<div class="card-grid">
+    <div class="card">
+        <h3>인프라 자산관리</h3>
+        <div class="count">{{ counts.infra }}</div>
+        <a href="{% url 'web:asset_list' %}">목록 보기</a>
+    </div>
+    <div class="card">
+        <h3>서비스 마스터</h3>
+        <div class="count">{{ counts.service }}</div>
+        <a href="{% url 'web:service_master_list' %}">목록 보기</a>
+    </div>
+    <div class="card">
+        <h3>자산 마스터</h3>
+        <div class="count">{{ counts.component }}</div>
+        <a href="{% url 'web:component_master_list' %}">목록 보기</a>
+    </div>
+    <div class="card">
+        <h3>담당자 마스터</h3>
+        <div class="count">{{ counts.person }}</div>
+        <a href="{% url 'web:person_master_list' %}">목록 보기</a>
+    </div>
+</div>
+
+<div class="card" style="margin-top:16px;">
+    <h3>통합 질의 창</h3>
+    <p class="muted">질문 입력 시 동일 페이지 내에서 답변 창이 갱신됩니다.</p>
+    <div id="chat-answer" style="height:260px; overflow:auto; border:1px solid #d9d9d9; padding:10px; border-radius:6px; background:#fff;">
+        <div class="muted">질문을 입력하면 답변이 여기에 표시됩니다.</div>
+    </div>
+    <form id="chat-form" style="margin-top:10px; display:flex; gap:8px;">
+        <input id="chat-input" type="text" placeholder="예: 샘플시스템의 인프라 구분을 알려줘" style="flex:1; padding:8px;">
+        <button type="submit">질문</button>
+    </form>
+</div>
+
+<script>
+    (function () {
+        const form = document.getElementById("chat-form");
+        const input = document.getElementById("chat-input");
+        const answer = document.getElementById("chat-answer");
+
+        form.addEventListener("submit", function (event) {
+            event.preventDefault();
+            const q = input.value.trim();
+            if (!q) return;
+
+            const qBlock = document.createElement("div");
+            qBlock.style.marginBottom = "8px";
+            qBlock.innerHTML = "<strong>질문</strong><br>" + q;
+
+            const aBlock = document.createElement("div");
+            aBlock.style.marginBottom = "12px";
+            aBlock.style.padding = "8px";
+            aBlock.style.background = "#f7f9ff";
+            aBlock.style.border = "1px solid #dbe4ff";
+            aBlock.style.borderRadius = "6px";
+            aBlock.innerHTML = "<strong>답변</strong><br>현재는 UI 뼈대 단계입니다. 이후 RAG/LLM 연동 시 실제 답변을 제공합니다.";
+
+            answer.appendChild(qBlock);
+            answer.appendChild(aBlock);
+            answer.scrollTop = answer.scrollHeight;
+            input.value = "";
+            input.focus();
+        });
+    })();
+</script>
+{% endblock %}

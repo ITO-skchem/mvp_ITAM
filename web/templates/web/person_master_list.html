@@ -1,0 +1,234 @@
+{% extends "web/base.html" %}
+{% load web_extras %}
+
+{% block title %}담당자 마스터 | ITAM 포털{% endblock %}
+
+{% block content %}
+<div class="list-screen">
+<h2>담당자 마스터</h2>
+<form class="search-box" method="get">
+    <input type="text" class="search-input" name="q" value="{{ q }}" placeholder="성명/사번/담당 서비스/소속 조직/메일 검색">
+    <button type="submit">검색</button>
+    <a class="btn-like" href="{% url 'web:person_master_list' %}">초기화</a>
+    <span class="muted">조회건수: {{ page_obj.paginator.count }}건</span>
+    <span class="spacer"></span>
+    <button type="button" id="person-save-btn">저장</button>
+    <button type="button" id="person-add-btn">추가</button>
+    <button type="button" id="person-delete-btn">삭제</button>
+</form>
+<datalist id="service-name-list">
+    {% for svc_name in service_names %}
+    <option value="{{ svc_name }}"></option>
+    {% endfor %}
+</datalist>
+<datalist id="person-role-code-list">
+    {% for role_code in person_role_codes %}
+    <option value="{{ role_code }}"></option>
+    {% endfor %}
+</datalist>
+<datalist id="resident-code-list">
+    {% for resident_code in resident_codes %}
+    <option value="{{ resident_code }}"></option>
+    {% endfor %}
+</datalist>
+<form id="person-form" class="list-form" method="post" enctype="multipart/form-data">
+    {% csrf_token %}
+    <input type="hidden" name="action" id="person-action" value="save">
+    <input type="hidden" name="rows_json" id="person-rows-json" value="[]">
+    <input type="hidden" name="deleted_ids_json" id="person-deleted-ids-json" value="[]">
+
+    <div class="wrap">
+        <table id="person-table">
+            <thead>
+                <tr>
+                    <th><input type="checkbox" id="person-check-all"></th>
+                    <th>담당자관리번호</th>
+                    <th>성명</th>
+                    <th>사번</th>
+                    <th>역할</th>
+                    <th>담당 서비스</th>
+                    <th>상주 여부</th>
+                    <th>소속 조직</th>
+                    <th>연락처</th>
+                    <th>내부 메일</th>
+                    <th>외부 메일</th>
+                    <th>투입 일자</th>
+                    <th>비고</th>
+                    <th>오류</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for p in items %}
+                <tr>
+                    <td><input type="checkbox" class="row-check" {% if p.id in failed_ids %}checked{% endif %}></td>
+                    <td>
+                        <input type="hidden" data-field="id" value="{{ p.id }}">
+                        <input type="hidden" data-field="person_mgmt_no" value="{{ p.person_mgmt_no }}">
+                        <span class="key-display">{{ p.person_mgmt_no }}</span>
+                    </td>
+                    <td><input type="text" data-field="name" value="{{ p.name }}"></td>
+                    <td><input type="text" data-field="employee_no" value="{{ p.employee_no }}"></td>
+                    <td><input type="text" data-field="role" list="person-role-code-list" value="{{ p.role }}"></td>
+                    <td><input type="text" data-field="system_name" list="service-name-list" value="{{ p.system_name }}"></td>
+                    <td><input type="text" data-field="resident" list="resident-code-list" value="{{ p.resident|yesno:'상주,비상주' }}"></td>
+                    <td><input type="text" data-field="company" value="{{ p.company }}"></td>
+                    <td><input type="text" data-field="phone" value="{{ p.phone }}"></td>
+                    <td><input type="text" data-field="email" value="{{ p.email }}"></td>
+                    <td><input type="text" data-field="ext_email" value="{{ p.ext_email }}"></td>
+                    <td><input type="date" data-field="deployed_at" value="{{ p.deployed_at|date:'Y-m-d' }}"></td>
+                    <td><input type="text" data-field="notes" value="{{ p.notes }}"></td>
+                    <td style="color:#b10000;">{{ row_errors|lookup:p.id }}</td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="14">등록된 담당자가 없습니다.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <div class="bottom-actions">
+        <div style="width:260px;"></div>
+        <div class="pager">
+            {% if page_obj.has_previous %}<a href="?q={{ q }}&page={{ page_obj.previous_page_number }}">이전</a>{% endif %}
+            {% for num in page_obj.paginator.page_range %}
+                {% if num == page_obj.number %}
+                    <strong>{{ num }}</strong>
+                {% else %}
+                    <a href="?q={{ q }}&page={{ num }}">{{ num }}</a>
+                {% endif %}
+            {% endfor %}
+            {% if page_obj.has_next %}<a href="?q={{ q }}&page={{ page_obj.next_page_number }}">다음</a>{% endif %}
+        </div>
+        <div class="excel-actions">
+            <input type="file" id="person-import-file" name="excel_file" accept=".xlsx,.xls">
+            <button type="button" id="person-import-btn">엑셀 import</button>
+            <a href="?q={{ q }}&export=1"><button type="button">엑셀 export</button></a>
+        </div>
+    </div>
+</form>
+
+<script>
+(() => {
+    const form = document.getElementById("person-form");
+    const table = document.getElementById("person-table");
+    const actionInput = document.getElementById("person-action");
+    const rowsInput = document.getElementById("person-rows-json");
+    const deletedInput = document.getElementById("person-deleted-ids-json");
+    const deletedIds = [];
+    const serviceNames = [{% for svc_name in service_names %}"{{ svc_name|escapejs }}"{% if not forloop.last %}, {% endif %}{% endfor %}];
+    const roleCodes = [{% for role_code in person_role_codes %}"{{ role_code|escapejs }}"{% if not forloop.last %}, {% endif %}{% endfor %}];
+    const residentCodes = [{% for resident_code in resident_codes %}"{{ resident_code|escapejs }}"{% if not forloop.last %}, {% endif %}{% endfor %}];
+    const usedKeys = new Set(
+        [...table.querySelectorAll('input[data-field="person_mgmt_no"]')]
+            .map((el) => el.value)
+            .filter((v) => v)
+    );
+
+    const nextKey = () => {
+        let maxNo = 0;
+        usedKeys.forEach((k) => {
+            if (!k.startsWith("PRS")) return;
+            const n = parseInt(k.slice(3), 10);
+            if (!Number.isNaN(n)) maxNo = Math.max(maxNo, n);
+        });
+        let candidate = "";
+        do {
+            maxNo += 1;
+            candidate = `PRS${String(maxNo).padStart(4, "0")}`;
+        } while (usedKeys.has(candidate));
+        usedKeys.add(candidate);
+        return candidate;
+    };
+
+    document.getElementById("person-check-all")?.addEventListener("change", (e) => {
+        table.querySelectorAll(".row-check").forEach((el) => { el.checked = e.target.checked; });
+    });
+
+    const cloneRow = (srcRow, copyValues) => {
+        const row = srcRow.cloneNode(true);
+        row.querySelectorAll("input, select").forEach((el) => {
+            if (el.classList.contains("row-check")) { el.checked = true; return; }
+            if (el.dataset.field === "id") { el.value = ""; return; }
+            if (el.dataset.field === "person_mgmt_no") {
+                el.value = nextKey();
+                const keySpan = row.querySelector(".key-display");
+                if (keySpan) keySpan.textContent = el.value;
+                return;
+            }
+            if (el.type === "checkbox") { el.checked = copyValues ? el.checked : false; return; }
+            if (!copyValues) el.value = "";
+        });
+        return row;
+    };
+
+    const markChecked = (target) => {
+        const tr = target.closest("tr");
+        if (!tr) return;
+        const rowCheck = tr.querySelector(".row-check");
+        if (rowCheck) rowCheck.checked = true;
+    };
+
+    table.addEventListener("input", (e) => {
+        if (e.target.matches("[data-field]")) markChecked(e.target);
+    });
+    table.addEventListener("change", (e) => {
+        if (e.target.matches("[data-field]")) markChecked(e.target);
+    });
+    table.addEventListener("keydown", (e) => {
+        if (e.key !== "Enter") return;
+        if (!["system_name", "role", "resident"].includes(e.target.dataset.field)) return;
+        const keyword = (e.target.value || "").trim().toLowerCase();
+        if (!keyword) return;
+        let source = residentCodes;
+        if (e.target.dataset.field === "system_name") source = serviceNames;
+        else if (e.target.dataset.field === "role") source = roleCodes;
+        const matches = source.filter((n) => n.toLowerCase().includes(keyword));
+        if (matches.length === 1) {
+            e.preventDefault();
+            e.target.value = matches[0];
+            markChecked(e.target);
+        }
+    });
+
+    document.getElementById("person-add-btn").addEventListener("click", () => {
+        const tbody = table.querySelector("tbody");
+        const selected = [...tbody.querySelectorAll("tr")].filter((tr) => tr.querySelector(".row-check:checked"));
+        if (selected.length) { selected.forEach((tr) => tbody.appendChild(cloneRow(tr, true))); return; }
+        const base = tbody.querySelector("tr");
+        if (base) tbody.appendChild(cloneRow(base, false));
+    });
+
+    document.getElementById("person-delete-btn").addEventListener("click", () => {
+        const rows = [...table.querySelectorAll("tbody tr")].filter((tr) => tr.querySelector(".row-check:checked"));
+        rows.forEach((tr) => {
+            const idEl = tr.querySelector('input[data-field="id"]');
+            if (idEl?.value) deletedIds.push(idEl.value);
+            tr.remove();
+        });
+    });
+
+    document.getElementById("person-save-btn").addEventListener("click", () => {
+        const rows = [...table.querySelectorAll("tbody tr")]
+        .filter((tr) => tr.querySelector(".row-check:checked"))
+        .map((tr) => {
+            const obj = {};
+            tr.querySelectorAll("[data-field]").forEach((el) => {
+                obj[el.dataset.field] = el.type === "checkbox" ? (el.checked ? "1" : "0") : el.value;
+            });
+            return obj;
+        });
+        rowsInput.value = JSON.stringify(rows);
+        deletedInput.value = JSON.stringify(deletedIds);
+        actionInput.value = "save";
+        form.submit();
+    });
+
+    document.getElementById("person-import-btn").addEventListener("click", () => {
+        if (!document.getElementById("person-import-file").files[0]) return;
+        actionInput.value = "import";
+        form.submit();
+    });
+})();
+</script>
+</div>
+{% endblock %}

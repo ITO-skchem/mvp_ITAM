@@ -1,0 +1,10 @@
+django<5
+django-jazzmin
+djangorestframework
+django-filter
+psycopg2-binary
+pandas
+openpyxl
+python-dotenv
+faiss-cpu
+sentence-transformers

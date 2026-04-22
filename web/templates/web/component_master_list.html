@@ -1,0 +1,229 @@
+{% extends "web/base.html" %}
+{% load web_extras %}
+
+{% block title %}자산 마스터 | ITAM 포털{% endblock %}
+
+{% block content %}
+<div class="list-screen">
+<h2>자산 마스터</h2>
+<form class="search-box" method="get">
+    <input type="text" class="search-input" name="q" value="{{ q }}" placeholder="Hostname/시스템명/IP/서버 구분/플랫폼 검색">
+    <button type="submit">검색</button>
+    <a class="btn-like" href="{% url 'web:component_master_list' %}">초기화</a>
+    <span class="muted">조회건수: {{ page_obj.paginator.count }}건</span>
+    <span class="spacer"></span>
+    <button type="button" id="component-save-btn">저장</button>
+    <button type="button" id="component-add-btn">추가</button>
+    <button type="button" id="component-delete-btn">삭제</button>
+</form>
+<datalist id="service-name-list">
+    {% for svc_name in service_names %}
+    <option value="{{ svc_name }}"></option>
+    {% endfor %}
+</datalist>
+<form id="component-form" class="list-form" method="post" enctype="multipart/form-data">
+    {% csrf_token %}
+    <input type="hidden" name="action" id="component-action" value="save">
+    <input type="hidden" name="rows_json" id="component-rows-json" value="[]">
+    <input type="hidden" name="deleted_ids_json" id="component-deleted-ids-json" value="[]">
+    <div class="wrap">
+        <table id="component-table">
+            <thead>
+                <tr>
+                    <th><input type="checkbox" id="component-check-all"></th>
+                    <th>자산관리번호</th>
+                    <th>Hostname</th>
+                    <th>시스템명</th>
+                    <th>서버 구분</th>
+                    <th>운영/개발</th>
+                    <th>네트웍 구분</th>
+                    <th>플랫폼 구분</th>
+                    <th>IP</th>
+                    <th>Port</th>
+                    <th>위치</th>
+                    <th>MW</th>
+                    <th>OS/DBMS</th>
+                    <th>URL/DB명</th>
+                    <th>SSL 도메인</th>
+                    <th>인증서 포맷</th>
+                    <th>비고1</th>
+                    <th>비고2</th>
+                    <th>오류</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for c in items %}
+                <tr>
+                    <td><input type="checkbox" class="row-check" {% if c.id in failed_ids %}checked{% endif %}></td>
+                    <td>
+                        <input type="hidden" data-field="id" value="{{ c.id }}">
+                        <input type="hidden" data-field="asset_mgmt_no" value="{{ c.asset_mgmt_no }}">
+                        <span class="key-display">{{ c.asset_mgmt_no }}</span>
+                    </td>
+                    <td><input type="text" data-field="hostname" value="{{ c.hostname }}"></td>
+                    <td><input type="text" data-field="system_name" list="service-name-list" value="{{ c.system_name }}"></td>
+                    <td><input type="text" data-field="server_type" value="{{ c.server_type }}"></td>
+                    <td><input type="text" data-field="operation_dev" value="{{ c.operation_dev }}"></td>
+                    <td><input type="text" data-field="network_zone" value="{{ c.network_zone }}"></td>
+                    <td><input type="text" data-field="platform_type" value="{{ c.platform_type }}"></td>
+                    <td><input type="text" data-field="ip" value="{{ c.ip }}"></td>
+                    <td><input type="text" data-field="port" value="{{ c.port }}"></td>
+                    <td><input type="text" data-field="location" value="{{ c.location }}"></td>
+                    <td><input type="text" data-field="mw" value="{{ c.mw }}"></td>
+                    <td><input type="text" data-field="os_dbms" value="{{ c.os_dbms }}"></td>
+                    <td><input type="text" data-field="url_or_db_name" value="{{ c.url_or_db_name }}"></td>
+                    <td><input type="text" data-field="ssl_domain" value="{{ c.ssl_domain }}"></td>
+                    <td><input type="text" data-field="cert_format" value="{{ c.cert_format }}"></td>
+                    <td><input type="text" data-field="remark1" value="{{ c.remark1 }}"></td>
+                    <td><input type="text" data-field="remark2" value="{{ c.remark2 }}"></td>
+                    <td style="color:#b10000;">{{ row_errors|lookup:c.id }}</td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="19">등록된 자산 마스터가 없습니다.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <div class="bottom-actions">
+        <div style="width:260px;"></div>
+        <div class="pager">
+            {% if page_obj.has_previous %}<a href="?q={{ q }}&page={{ page_obj.previous_page_number }}">이전</a>{% endif %}
+            {% for num in page_obj.paginator.page_range %}
+                {% if num == page_obj.number %}
+                    <strong>{{ num }}</strong>
+                {% else %}
+                    <a href="?q={{ q }}&page={{ num }}">{{ num }}</a>
+                {% endif %}
+            {% endfor %}
+            {% if page_obj.has_next %}<a href="?q={{ q }}&page={{ page_obj.next_page_number }}">다음</a>{% endif %}
+        </div>
+        <div class="excel-actions">
+            <input type="file" id="component-import-file" name="excel_file" accept=".xlsx,.xls">
+            <button type="button" id="component-import-btn">엑셀 import</button>
+            <a href="?q={{ q }}&export=1"><button type="button">엑셀 export</button></a>
+        </div>
+    </div>
+</form>
+
+<script>
+(() => {
+    const form = document.getElementById("component-form");
+    const table = document.getElementById("component-table");
+    const actionInput = document.getElementById("component-action");
+    const rowsInput = document.getElementById("component-rows-json");
+    const deletedInput = document.getElementById("component-deleted-ids-json");
+    const deletedIds = [];
+    const usedKeys = new Set(
+        [...table.querySelectorAll('input[data-field="asset_mgmt_no"]')]
+            .map((el) => el.value)
+            .filter((v) => v)
+    );
+
+    const nextKey = () => {
+        let maxNo = 0;
+        usedKeys.forEach((k) => {
+            if (!k.startsWith("AST")) return;
+            const n = parseInt(k.slice(3), 10);
+            if (!Number.isNaN(n)) maxNo = Math.max(maxNo, n);
+        });
+        let candidate = "";
+        do {
+            maxNo += 1;
+            candidate = `AST${String(maxNo).padStart(4, "0")}`;
+        } while (usedKeys.has(candidate));
+        usedKeys.add(candidate);
+        return candidate;
+    };
+
+    document.getElementById("component-check-all")?.addEventListener("change", (e) => {
+        table.querySelectorAll(".row-check").forEach((el) => { el.checked = e.target.checked; });
+    });
+
+    const cloneRow = (srcRow, copyValues) => {
+        const row = srcRow.cloneNode(true);
+        row.querySelectorAll("input").forEach((el) => {
+            if (el.classList.contains("row-check")) { el.checked = true; return; }
+            if (el.dataset.field === "id") { el.value = ""; return; }
+            if (el.dataset.field === "asset_mgmt_no") {
+                el.value = nextKey();
+                const keySpan = row.querySelector(".key-display");
+                if (keySpan) keySpan.textContent = el.value;
+                return;
+            }
+            if (el.type === "checkbox") { el.checked = copyValues ? el.checked : false; return; }
+            if (!copyValues) el.value = "";
+        });
+        return row;
+    };
+
+    const markChecked = (target) => {
+        const tr = target.closest("tr");
+        if (!tr) return;
+        const rowCheck = tr.querySelector(".row-check");
+        if (rowCheck) rowCheck.checked = true;
+    };
+
+    table.addEventListener("input", (e) => {
+        if (e.target.matches("[data-field]")) markChecked(e.target);
+    });
+    table.addEventListener("change", (e) => {
+        if (e.target.matches("[data-field]")) markChecked(e.target);
+    });
+
+    document.getElementById("component-add-btn").addEventListener("click", () => {
+        const tbody = table.querySelector("tbody");
+        const selected = [...tbody.querySelectorAll("tr")].filter((tr) => tr.querySelector(".row-check:checked"));
+        if (selected.length) { selected.forEach((tr) => tbody.appendChild(cloneRow(tr, true))); return; }
+        const base = tbody.querySelector("tr");
+        if (base) tbody.appendChild(cloneRow(base, false));
+    });
+
+    document.getElementById("component-delete-btn").addEventListener("click", () => {
+        const rows = [...table.querySelectorAll("tbody tr")].filter((tr) => tr.querySelector(".row-check:checked"));
+        rows.forEach((tr) => {
+            const idEl = tr.querySelector('input[data-field="id"]');
+            if (idEl?.value) deletedIds.push(idEl.value);
+            tr.remove();
+        });
+    });
+
+    const serviceNames = [{% for svc_name in service_names %}"{{ svc_name|escapejs }}"{% if not forloop.last %}, {% endif %}{% endfor %}];
+    table.addEventListener("keydown", (e) => {
+        if (e.key !== "Enter") return;
+        if (e.target.dataset.field !== "system_name") return;
+        const keyword = (e.target.value || "").trim().toLowerCase();
+        if (!keyword) return;
+        const matches = serviceNames.filter((n) => n.toLowerCase().includes(keyword));
+        if (matches.length === 1) {
+            e.preventDefault();
+            e.target.value = matches[0];
+            markChecked(e.target);
+        }
+    });
+
+    document.getElementById("component-save-btn").addEventListener("click", () => {
+        const rows = [...table.querySelectorAll("tbody tr")]
+        .filter((tr) => tr.querySelector(".row-check:checked"))
+        .map((tr) => {
+            const obj = {};
+            tr.querySelectorAll("[data-field]").forEach((el) => {
+                obj[el.dataset.field] = el.type === "checkbox" ? (el.checked ? "1" : "0") : el.value;
+            });
+            return obj;
+        });
+        rowsInput.value = JSON.stringify(rows);
+        deletedInput.value = JSON.stringify(deletedIds);
+        actionInput.value = "save";
+        form.submit();
+    });
+
+    document.getElementById("component-import-btn").addEventListener("click", () => {
+        if (!document.getElementById("component-import-file").files[0]) return;
+        actionInput.value = "import";
+        form.submit();
+    });
+})();
+</script>
+</div>
+{% endblock %}

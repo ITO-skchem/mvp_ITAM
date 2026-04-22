@@ -1,0 +1,13 @@
+{% extends "web/base.html" %}
+
+{% block title %}인프라 자산 상세 | ITAM 포털{% endblock %}
+
+{% block content %}
+    <h2>{{ asset.system_name }}</h2>
+    <p>No: {{ asset.no }}</p>
+    <p>IP: {{ asset.ip }}</p>
+    <p>Host: {{ asset.hostname }}</p>
+    <p>DB: {{ asset.dbms }} / {{ asset.db_name }}</p>
+    <p>위치: {{ asset.location }}</p>
+    <p><a href="{% url 'web:asset_list' %}">목록으로</a></p>
+{% endblock %}

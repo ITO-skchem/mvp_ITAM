@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="ko">
+<head>
+    <meta charset="utf-8">
+    <title>{% block title %}ITAM 포털{% endblock %}</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; background: #fafafa; color: #222; }
+        header { background: #1f2a44; color: #fff; padding: 12px 16px; }
+        header h1 { margin: 0; font-size: 18px; }
+        .top-menu-wrap { background: #f4f6fb; border-bottom: 1px solid #d6dbea; padding: 8px 12px 0 12px; }
+        .menu-tabs { list-style: none; margin: 0; padding: 0; display: flex; gap: 6px; flex-wrap: wrap; }
+        .menu-tabs a {
+            display: block;
+            padding: 8px 14px;
+            border: 1px solid #cfd8ef;
+            border-bottom: none;
+            border-top-left-radius: 10px;
+            border-top-right-radius: 10px;
+            background: #eef3ff;
+            color: #22304f;
+            text-decoration: none;
+            font-size: 14px;
+        }
+        .menu-tabs a:hover { background: #e3ebff; }
+        .menu-tabs a.active {
+            background: #dfe9ff;
+            color: #0d2a66;
+            font-weight: bold;
+            border-color: #9cb8f5;
+        }
+        main { padding: 16px; }
+        .muted { color: #666; font-size: 12px; }
+        .card-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+        .card { background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: 14px; }
+        .card h3 { margin: 0 0 6px 0; font-size: 15px; }
+        .count { font-size: 22px; font-weight: bold; margin: 8px 0; }
+        .search-box {
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex-wrap: nowrap;
+        }
+        .search-box .search-input {
+            width: 280px;
+            flex: 0 0 auto;
+        }
+        .search-box .btn-like {
+            display: inline-block;
+            padding: 6px 10px;
+            border: 1px solid #999;
+            border-radius: 2px;
+            background: #efefef;
+            color: #000;
+            text-decoration: none;
+            line-height: 1.2;
+            font-size: 13px;
+            cursor: pointer;
+        }
+        .search-box .btn-like:hover { background: #e5e5e5; }
+        .search-box .spacer { flex: 1; min-width: 20px; }
+        .list-toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+        .list-toolbar .right button { margin-left: 6px; }
+        .list-screen {
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+            height: calc(100vh - 170px);
+        }
+        .list-screen > form.list-form {
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+            flex: 1;
+        }
+        input[type="text"] { width: 360px; max-width: 100%; padding: 6px; }
+        input[type="number"], select { padding: 5px; }
+        button { padding: 6px 10px; }
+        table { border-collapse: collapse; width: 100%; font-size: 13px; background: #fff; }
+        th, td { border: 1px solid #d9d9d9; padding: 6px 8px; text-align: left; white-space: nowrap; }
+        th { background: #f5f5f5; position: sticky; top: 0; z-index: 2; }
+        .wrap { overflow: auto; max-height: none; border: 1px solid #d9d9d9; background: #fff; flex: 1; min-height: 0; }
+        .bottom-actions { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; }
+        .pager { text-align: center; flex: 1; }
+        .pager a { margin: 0 6px; }
+        .excel-actions { min-width: 260px; display: flex; justify-content: flex-end; gap: 8px; }
+        .error { color: #b10000; margin: 8px 0; }
+        .msg-wrap { margin-bottom: 10px; }
+        .msg {
+            padding: 10px 12px;
+            border-radius: 6px;
+            border: 1px solid #c8d8c8;
+            background: #edf8ed;
+            color: #1f5d1f;
+            margin-bottom: 6px;
+            font-size: 13px;
+        }
+        .modal-backdrop {
+            position: fixed;
+            inset: 0;
+            background: rgba(20, 24, 35, 0.45);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+        }
+        .modal-panel {
+            width: min(560px, calc(100vw - 32px));
+            background: #fff;
+            border-radius: 10px;
+            border: 1px solid #d9d9d9;
+            box-shadow: 0 8px 28px rgba(0, 0, 0, 0.2);
+            overflow: hidden;
+        }
+        .modal-head {
+            display: flex;
+            justify-content: flex-start;
+            align-items: center;
+            padding: 12px 14px;
+            border-bottom: 1px solid #ececec;
+            background: #fafafa;
+        }
+        .modal-title {
+            margin: 0;
+            font-size: 15px;
+            color: #222;
+            font-weight: bold;
+        }
+        .modal-body {
+            padding: 14px;
+            max-height: 50vh;
+            overflow: auto;
+            font-size: 14px;
+        }
+        .modal-body ul { margin: 0; padding-left: 18px; }
+        .modal-foot {
+            padding: 12px 14px;
+            border-top: 1px solid #ececec;
+            text-align: right;
+            background: #fafafa;
+        }
+        .modal-ok {
+            border: 1px solid #1f2a44;
+            background: #1f2a44;
+            color: #fff;
+            border-radius: 6px;
+            padding: 6px 12px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>IT 자산관리 포털</h1>
+    </header>
+    <div class="top-menu-wrap">
+        <ul class="menu-tabs">
+            <li><a href="{% url 'web:dashboard' %}" class="{% if request.resolver_match.url_name == 'dashboard' %}active{% endif %}">메인</a></li>
+            <li><a href="{% url 'web:asset_list' %}" class="{% if request.resolver_match.url_name == 'asset_list' %}active{% endif %}">인프라 자산관리</a></li>
+            <li><a href="{% url 'web:service_master_list' %}" class="{% if request.resolver_match.url_name == 'service_master_list' %}active{% endif %}">서비스 마스터</a></li>
+            <li><a href="{% url 'web:component_master_list' %}" class="{% if request.resolver_match.url_name == 'component_master_list' %}active{% endif %}">자산 마스터</a></li>
+            <li><a href="{% url 'web:person_master_list' %}" class="{% if request.resolver_match.url_name == 'person_master_list' %}active{% endif %}">담당자 마스터</a></li>
+            <li><a href="/admin/" class="{% if '/admin/' in request.path %}active{% endif %}">Admin</a></li>
+        </ul>
+    </div>
+    <main>
+        {% if messages %}
+        <div class="msg-wrap">
+            {% for message in messages %}
+            <div class="msg">{{ message }}</div>
+            {% endfor %}
+        </div>
+        {% endif %}
+        {% block content %}{% endblock %}
+    </main>
+    {% if popup_error_summary %}
+    <div id="error-summary-modal" class="modal-backdrop" role="dialog" aria-modal="true" aria-label="오류 요약">
+        <div class="modal-panel" id="error-summary-panel" tabindex="-1">
+            <div class="modal-head">
+                <h3 class="modal-title">저장/처리 오류 요약</h3>
+            </div>
+            <div class="modal-body">
+                <ul>
+                    {% for item in popup_error_summary %}
+                    <li>{{ item }}</li>
+                    {% endfor %}
+                </ul>
+            </div>
+            <div class="modal-foot">
+                <button type="button" class="modal-ok" id="error-summary-close-btn">확인</button>
+            </div>
+        </div>
+    </div>
+    <script>
+        (function () {
+            const modal = document.getElementById("error-summary-modal");
+            const panel = document.getElementById("error-summary-panel");
+            if (!modal) return;
+
+            const close = () => {
+                modal.style.display = "none";
+            };
+
+            document.getElementById("error-summary-close-btn")?.addEventListener("click", close);
+            modal.addEventListener("click", (e) => {
+                if (e.target === modal) close();
+            });
+            panel?.focus();
+            document.addEventListener("keydown", (e) => {
+                if (e.key === "Escape" && modal.style.display !== "none") close();
+                if (e.key === "Enter" && modal.style.display !== "none") {
+                    const active = document.activeElement;
+                    if (active && modal.contains(active)) close();
+                }
+            });
+        })();
+    </script>
+    {% endif %}
+</body>
+</html>
