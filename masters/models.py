@@ -13,7 +13,7 @@ class ServiceMaster(models.Model):
     service_level = models.CharField("서비스 수준", max_length=50, blank=True)
     customer_owner = models.CharField("고객사 담당자", max_length=100, blank=True)
     appl_owner = models.CharField("Appl. 담당자", max_length=100, blank=True)
-    partner_operator = models.CharField("협력사 운영자", max_length=100, blank=True)
+    partner_operator = models.CharField("Appl. 운영자", max_length=100, blank=True)
     server_owner = models.CharField("서버 담당자", max_length=100, blank=True)
     db_owner = models.CharField("DB 담당자", max_length=100, blank=True)
     owner_company = models.CharField("담당 회사", max_length=100, blank=True)

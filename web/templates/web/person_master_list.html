@@ -4,6 +4,85 @@
 {% block title %}담당자 마스터 | ITAM 포털{% endblock %}
 
 {% block content %}
+<style>
+    #person-table {
+        --w-select: 40px;
+        --w-mgmt: 112px;
+        --w-name: 96px;
+        --w-system: 200px;
+        border-collapse: separate;
+        border-spacing: 0;
+    }
+    #person-table th.select-col,
+    #person-table td.select-col {
+        width: var(--w-select);
+        min-width: var(--w-select);
+        max-width: var(--w-select);
+    }
+    #person-table th.mgmt-col,
+    #person-table td.mgmt-col {
+        width: var(--w-mgmt);
+        min-width: var(--w-mgmt);
+        max-width: var(--w-mgmt);
+    }
+    #person-table th.name-col,
+    #person-table td.name-col {
+        width: var(--w-name);
+        min-width: var(--w-name);
+        max-width: var(--w-name);
+    }
+    #person-table input[data-field="name"] { width: 6em; }
+    #person-table td input[data-field] {
+        box-sizing: border-box;
+        max-width: 100%;
+    }
+    #person-table td.name-col input[data-field="name"] { width: 100%; }
+    #person-table th.employee-no-col { width: 5em; }
+    #person-table input[data-field="employee_no"] { width: 5em; }
+    #person-table th.role-col { width: 10em; }
+    #person-table input[data-field="role"] { width: 10em; }
+    #person-table th.system-name-col,
+    #person-table td.system-name-col {
+        width: var(--w-system);
+        min-width: var(--w-system);
+        max-width: var(--w-system);
+    }
+    #person-table input[data-field="system_name"] { width: 13.5em; }
+    #person-table th.resident-col,
+    #person-table td.resident-col { width: 5.5em; }
+    #person-table input[data-field="resident"] { width: 5.5em; }
+    #person-table th.company-col { width: 10em; }
+    #person-table input[data-field="company"] { width: 10em; }
+    #person-table th.phone-col { width: 10em; }
+    #person-table input[data-field="phone"] { width: 10em; }
+    #person-table th.email-col { width: 20em; }
+    #person-table input[data-field="email"] { width: 20em; }
+    #person-table th.ext-email-col { width: 20em; }
+    #person-table input[data-field="ext_email"] { width: 20em; }
+    #person-table th.notes-col { width: 20em; }
+    #person-table input[data-field="notes"] { width: 20em; }
+    #person-table .sticky-col {
+        position: sticky;
+        background: #fff;
+        box-sizing: border-box;
+    }
+    #person-table thead .sticky-col {
+        background: #f5f5f5;
+        z-index: 4;
+    }
+    #person-table tbody .sticky-col { z-index: 3; }
+    #person-table .select-col { left: 0; }
+    #person-table .mgmt-col { left: var(--w-select); }
+    #person-table .name-col { left: calc(var(--w-select) + var(--w-mgmt)); }
+    #person-table .system-name-col { left: calc(var(--w-select) + var(--w-mgmt) + var(--w-name)); }
+    #person-table th.system-name-col,
+    #person-table td.system-name-col {
+        border-right: 1px solid #b3b3b3;
+    }
+    #person-table .sticky-boundary {
+        box-shadow: 1px 0 0 #b3b3b3;
+    }
+</style>
 <div class="list-screen">
 <h2>담당자 마스터</h2>
 <form class="search-box" method="get">
@@ -41,36 +120,36 @@
         <table id="person-table">
             <thead>
                 <tr>
-                    <th><input type="checkbox" id="person-check-all"></th>
-                    <th>담당자관리번호</th>
-                    <th>성명</th>
-                    <th>사번</th>
-                    <th>역할</th>
-                    <th>담당 서비스</th>
-                    <th>상주 여부</th>
-                    <th>소속 조직</th>
-                    <th>연락처</th>
-                    <th>내부 메일</th>
-                    <th>외부 메일</th>
+                    <th class="sticky-col select-col"><input type="checkbox" id="person-check-all"></th>
+                    <th class="sticky-col mgmt-col">담당자관리번호</th>
+                    <th class="sticky-col name-col">성명</th>
+                    <th class="sticky-col system-name-col sticky-boundary">담당 서비스</th>
+                    <th class="employee-no-col">사번</th>
+                    <th class="role-col">역할</th>
+                    <th class="resident-col">상주 여부</th>
+                    <th class="company-col">소속 조직</th>
+                    <th class="phone-col">연락처</th>
+                    <th class="email-col">내부 메일</th>
+                    <th class="ext-email-col">외부 메일</th>
                     <th>투입 일자</th>
-                    <th>비고</th>
+                    <th class="notes-col">비고</th>
                     <th>오류</th>
                 </tr>
             </thead>
             <tbody>
                 {% for p in items %}
                 <tr>
-                    <td><input type="checkbox" class="row-check" {% if p.id in failed_ids %}checked{% endif %}></td>
-                    <td>
+                    <td class="sticky-col select-col"><input type="checkbox" class="row-check" {% if p.id in failed_ids %}checked{% endif %}></td>
+                    <td class="sticky-col mgmt-col">
                         <input type="hidden" data-field="id" value="{{ p.id }}">
                         <input type="hidden" data-field="person_mgmt_no" value="{{ p.person_mgmt_no }}">
                         <span class="key-display">{{ p.person_mgmt_no }}</span>
                     </td>
-                    <td><input type="text" data-field="name" value="{{ p.name }}"></td>
+                    <td class="sticky-col name-col"><input type="text" data-field="name" value="{{ p.name }}"></td>
+                    <td class="sticky-col system-name-col sticky-boundary"><input type="text" data-field="system_name" list="service-name-list" value="{{ p.system_name }}"></td>
                     <td><input type="text" data-field="employee_no" value="{{ p.employee_no }}"></td>
                     <td><input type="text" data-field="role" list="person-role-code-list" value="{{ p.role }}"></td>
-                    <td><input type="text" data-field="system_name" list="service-name-list" value="{{ p.system_name }}"></td>
-                    <td><input type="text" data-field="resident" list="resident-code-list" value="{{ p.resident|yesno:'상주,비상주' }}"></td>
+                    <td class="resident-col"><input type="text" data-field="resident" list="resident-code-list" value="{{ p.resident|yesno:'상주,비상주' }}"></td>
                     <td><input type="text" data-field="company" value="{{ p.company }}"></td>
                     <td><input type="text" data-field="phone" value="{{ p.phone }}"></td>
                     <td><input type="text" data-field="email" value="{{ p.email }}"></td>

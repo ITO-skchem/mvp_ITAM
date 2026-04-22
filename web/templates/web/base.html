@@ -74,11 +74,33 @@
             flex: 1;
         }
         input[type="text"] { width: 360px; max-width: 100%; padding: 6px; }
+        input[type="date"] {
+            font-family: inherit;
+            font-size: inherit;
+            padding: 6px;
+        }
         input[type="number"], select { padding: 5px; }
         button { padding: 6px 10px; }
         table { border-collapse: collapse; width: 100%; font-size: 13px; background: #fff; }
         th, td { border: 1px solid #d9d9d9; padding: 6px 8px; text-align: left; white-space: nowrap; }
         th { background: #f5f5f5; position: sticky; top: 0; z-index: 2; }
+        .list-screen .wrap table th,
+        .list-screen .wrap table td {
+            height: 40px;
+            box-sizing: border-box;
+            vertical-align: middle;
+        }
+        .list-screen .wrap table td input[type="text"],
+        .list-screen .wrap table td input[type="date"],
+        .list-screen .wrap table td input[type="number"],
+        .list-screen .wrap table td select {
+            height: 32px;
+            padding-top: 6px;
+            padding-bottom: 6px;
+            font-family: inherit;
+            font-size: inherit;
+            box-sizing: border-box;
+        }
         .wrap { overflow: auto; max-height: none; border: 1px solid #d9d9d9; background: #fff; flex: 1; min-height: 0; }
         .bottom-actions { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; }
         .pager { text-align: center; flex: 1; }
@@ -156,7 +178,7 @@
     <div class="top-menu-wrap">
         <ul class="menu-tabs">
             <li><a href="{% url 'web:dashboard' %}" class="{% if request.resolver_match.url_name == 'dashboard' %}active{% endif %}">메인</a></li>
-            <li><a href="{% url 'web:asset_list' %}" class="{% if request.resolver_match.url_name == 'asset_list' %}active{% endif %}">인프라 자산관리</a></li>
+            <li><a href="{% url 'web:asset_list' %}" class="{% if request.resolver_match.url_name == 'asset_list' %}active{% endif %}">시스템 통합정보</a></li>
             <li><a href="{% url 'web:service_master_list' %}" class="{% if request.resolver_match.url_name == 'service_master_list' %}active{% endif %}">서비스 마스터</a></li>
             <li><a href="{% url 'web:component_master_list' %}" class="{% if request.resolver_match.url_name == 'component_master_list' %}active{% endif %}">자산 마스터</a></li>
             <li><a href="{% url 'web:person_master_list' %}" class="{% if request.resolver_match.url_name == 'person_master_list' %}active{% endif %}">담당자 마스터</a></li>

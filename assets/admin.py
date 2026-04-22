@@ -1,59 +1,34 @@
 from django.contrib import admin
-from django import forms
 
-from core.code_choices import get_code_choices
 from .models import InfraAsset
-
-
-class InfraAssetAdminForm(forms.ModelForm):
-    class Meta:
-        model = InfraAsset
-        fields = "__all__"
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        instance = kwargs.get("instance")
-
-        self.fields["use_flag"].choices = get_code_choices(
-            "use_flag",
-            include_blank=False,
-            current_value=getattr(instance, "use_flag", None),
-        )
-        self.fields["devops_type"].choices = get_code_choices(
-            "devops_type",
-            include_blank=True,
-            current_value=getattr(instance, "devops_type", None),
-        )
-        self.fields["infra_type"].choices = get_code_choices(
-            "infra_type",
-            include_blank=True,
-            current_value=getattr(instance, "infra_type", None),
-        )
-        self.fields["network_zone"].choices = get_code_choices(
-            "network_zone",
-            include_blank=True,
-            current_value=getattr(instance, "network_zone", None),
-        )
-        self.fields["platform_type"].choices = get_code_choices(
-            "platform_type",
-            include_blank=True,
-            current_value=getattr(instance, "platform_type", None),
-        )
 
 
 @admin.register(InfraAsset)
 class InfraAssetAdmin(admin.ModelAdmin):
-    form = InfraAssetAdminForm
-    search_fields = ("system_name", "hostname", "ip", "db_hostname", "db_ip")
+    def has_add_permission(self, request):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
     list_display = (
-        "no",
-        "system_name",
-        "infra_type",
-        "network_zone",
-        "platform_type",
+        "system_mgmt_no",
+        "service_mgmt_no",
+        "asset_mgmt_no",
+        "service_name",
+        "hostname",
         "ip",
-        "db_ip",
-        "use_flag",
+        "operation_dev",
     )
-    list_filter = ("infra_type", "network_zone", "platform_type", "use_flag", "devops_type")
-    filter_horizontal = ("extra_persons", "components")
+    search_fields = (
+        "system_mgmt_no",
+        "service_mgmt_no",
+        "asset_mgmt_no",
+        "service_name",
+        "hostname",
+        "customer_owner_name",
+        "appl_owner_name",
+        "partner_operator_name",
+    )
+    list_filter = ("operation_dev", "network_zone", "platform_type")
+    readonly_fields = [f.name for f in InfraAsset._meta.fields]

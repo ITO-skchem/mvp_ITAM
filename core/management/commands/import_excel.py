@@ -1,7 +1,6 @@
 import pandas as pd
 from django.core.management.base import BaseCommand
 
-from assets.models import InfraAsset
 from masters.models import Component, PersonMaster, ServiceMaster
 
 
@@ -74,35 +73,6 @@ class Command(BaseCommand):
                     },
                 )
 
-        if "인프라 자산관리" in xls.sheet_names:
-            df = pd.read_excel(path, sheet_name="인프라 자산관리")
-            for _, row in df.iterrows():
-                system_name = str(row.get("시스템명", "")).strip()
-                if not system_name:
-                    continue
-                InfraAsset.objects.create(
-                    system_name=system_name,
-                    use_flag="Y" if str(row.get("사용여부", "Y")).upper() in ["Y", "YES", "1", "TRUE"] else "N",
-                    infra_type="AWS" if "AWS" in str(row.get("인프라 구분", "")).upper() else "ONPREM",
-                    network_zone="DMZ" if "DMZ" in str(row.get("네트웍 구분", "")).upper() else "SF",
-                    platform_type="WEB",
-                    web=str(row.get("WEB", "")),
-                    was=str(row.get("WAS", "")),
-                    hostname=str(row.get("Hostname", "")),
-                    ip=str(row.get("IP", "")) or None,
-                    port=str(row.get("Port", "")),
-                    os=str(row.get("OS", "")),
-                    url=str(row.get("URL", "")),
-                    location=str(row.get("위치", "")),
-                    ssl_domain=str(row.get("SSL 도메인", "")),
-                    cert_format=str(row.get("인증서 포맷", "")),
-                    db_hostname=str(row.get("DB Hostname", "")),
-                    db_ip=str(row.get("DB IP", "")) or None,
-                    db_port=str(row.get("DB Port", "")),
-                    db_name=str(row.get("DB명", "")),
-                    dbms=str(row.get("DBMS", "")),
-                    remark1=str(row.get("비고1", "")),
-                    remark2=str(row.get("비고2", "")),
-                )
+        # 시스템 통합정보(InfraAsset)는 마스터 저장 시 자동 재계산되므로 엑셀에서 직접 적재하지 않습니다.
 
         self.stdout.write(self.style.SUCCESS("Excel import completed"))

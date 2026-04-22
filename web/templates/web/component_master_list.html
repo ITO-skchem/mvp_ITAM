@@ -4,10 +4,75 @@
 {% block title %}자산 마스터 | ITAM 포털{% endblock %}
 
 {% block content %}
+<style>
+    #component-table {
+        --w-select: 40px;
+        --w-mgmt: 96px;
+        --w-hostname: 15.5em;
+        --w-service: 13.5em;
+        border-collapse: separate;
+        border-spacing: 0;
+    }
+    #component-table th.select-col,
+    #component-table td.select-col {
+        width: var(--w-select);
+        min-width: var(--w-select);
+        max-width: var(--w-select);
+    }
+    #component-table th.mgmt-col,
+    #component-table td.mgmt-col {
+        width: var(--w-mgmt);
+        min-width: var(--w-mgmt);
+        max-width: var(--w-mgmt);
+    }
+    #component-table th.hostname-col,
+    #component-table td.hostname-col {
+        width: var(--w-hostname);
+        min-width: var(--w-hostname);
+        max-width: var(--w-hostname);
+    }
+    #component-table td.hostname-col input[data-field="hostname"] {
+        width: 100%;
+        max-width: 100%;
+        box-sizing: border-box;
+    }
+    #component-table th.service-name-col,
+    #component-table td.service-name-col {
+        width: var(--w-service);
+        min-width: var(--w-service);
+        max-width: var(--w-service);
+    }
+    #component-table td.service-name-col input[data-field="system_name"] {
+        width: 100%;
+        max-width: 100%;
+        box-sizing: border-box;
+    }
+    #component-table .sticky-col {
+        position: sticky;
+        background: #fff;
+        box-sizing: border-box;
+    }
+    #component-table thead .sticky-col {
+        background: #f5f5f5;
+        z-index: 4;
+    }
+    #component-table tbody .sticky-col { z-index: 3; }
+    #component-table .select-col { left: 0; }
+    #component-table .mgmt-col { left: var(--w-select); }
+    #component-table .hostname-col { left: calc(var(--w-select) + var(--w-mgmt)); }
+    #component-table .service-name-col { left: calc(var(--w-select) + var(--w-mgmt) + var(--w-hostname)); }
+    #component-table th.service-name-col,
+    #component-table td.service-name-col {
+        border-right: 1px solid #b3b3b3;
+    }
+    #component-table .sticky-boundary {
+        box-shadow: 1px 0 0 #b3b3b3;
+    }
+</style>
 <div class="list-screen">
 <h2>자산 마스터</h2>
 <form class="search-box" method="get">
-    <input type="text" class="search-input" name="q" value="{{ q }}" placeholder="Hostname/시스템명/IP/서버 구분/플랫폼 검색">
+    <input type="text" class="search-input" name="q" value="{{ q }}" placeholder="Hostname/서비스명/IP/서버 구분/플랫폼 검색">
     <button type="submit">검색</button>
     <a class="btn-like" href="{% url 'web:component_master_list' %}">초기화</a>
     <span class="muted">조회건수: {{ page_obj.paginator.count }}건</span>
@@ -30,10 +95,10 @@
         <table id="component-table">
             <thead>
                 <tr>
-                    <th><input type="checkbox" id="component-check-all"></th>
-                    <th>자산관리번호</th>
-                    <th>Hostname</th>
-                    <th>시스템명</th>
+                    <th class="sticky-col select-col"><input type="checkbox" id="component-check-all"></th>
+                    <th class="sticky-col mgmt-col">자산관리번호</th>
+                    <th class="sticky-col hostname-col">Hostname</th>
+                    <th class="sticky-col service-name-col sticky-boundary">서비스명</th>
                     <th>서버 구분</th>
                     <th>운영/개발</th>
                     <th>네트웍 구분</th>
@@ -54,14 +119,14 @@
             <tbody>
                 {% for c in items %}
                 <tr>
-                    <td><input type="checkbox" class="row-check" {% if c.id in failed_ids %}checked{% endif %}></td>
-                    <td>
+                    <td class="sticky-col select-col"><input type="checkbox" class="row-check" {% if c.id in failed_ids %}checked{% endif %}></td>
+                    <td class="sticky-col mgmt-col">
                         <input type="hidden" data-field="id" value="{{ c.id }}">
                         <input type="hidden" data-field="asset_mgmt_no" value="{{ c.asset_mgmt_no }}">
                         <span class="key-display">{{ c.asset_mgmt_no }}</span>
                     </td>
-                    <td><input type="text" data-field="hostname" value="{{ c.hostname }}"></td>
-                    <td><input type="text" data-field="system_name" list="service-name-list" value="{{ c.system_name }}"></td>
+                    <td class="sticky-col hostname-col"><input type="text" data-field="hostname" value="{{ c.hostname }}"></td>
+                    <td class="sticky-col service-name-col sticky-boundary"><input type="text" data-field="system_name" list="service-name-list" value="{{ c.system_name }}"></td>
                     <td><input type="text" data-field="server_type" value="{{ c.server_type }}"></td>
                     <td><input type="text" data-field="operation_dev" value="{{ c.operation_dev }}"></td>
                     <td><input type="text" data-field="network_zone" value="{{ c.network_zone }}"></td>

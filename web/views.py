@@ -12,6 +12,7 @@ from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 
 from ai_search.services import AssetSearchService
+from assets.infra_sync import build_appl_owner_names
 from assets.models import InfraAsset
 from core.models import AuditLog, Code
 from masters.models import Component, PersonMaster, ServiceMaster
@@ -19,7 +20,7 @@ from masters.models import Component, PersonMaster, ServiceMaster
 PERSON_ROLE_CODES = [
     "고객사 담당자",
     "Appl. 담당자",
-    "협력사 운영자",
+    "Appl. 운영자",
     "서버 담당자",
     "DB 담당자",
 ]
@@ -31,8 +32,9 @@ PERSON_ROLE_ALIASES = {
     "app": "Appl. 담당자",
     "application": "Appl. 담당자",
     "developer": "Appl. 담당자",
-    "partner": "협력사 운영자",
-    "partner_operator": "협력사 운영자",
+    "partner": "Appl. 운영자",
+    "partner_operator": "Appl. 운영자",
+    "협력사 운영자": "Appl. 운영자",
     "server": "서버 담당자",
     "server_owner": "서버 담당자",
     "db": "DB 담당자",
@@ -83,6 +85,13 @@ def parse_date(val):
     if pd.isna(dt):
         return None
     return dt.date()
+
+
+def split_owner_names(raw):
+    value = str(raw or "").strip()
+    if not value:
+        return []
+    return [part.strip() for part in value.split(";") if part.strip()]
 
 
 def parse_resident_code(val):
@@ -177,55 +186,6 @@ def get_row_value(row, candidates, default=""):
     return default
 
 
-def sync_infra_asset_owners_from_service_master():
-    service_map = {
-        row["name"]: {
-            "id": row["id"],
-            "customer_owner_name": row["customer_owner"] or "",
-            "appl_owner_name": row["appl_owner"] or "",
-            "partner_operator_name": row["partner_operator"] or "",
-        }
-        for row in ServiceMaster.objects.values("id", "name", "customer_owner", "appl_owner", "partner_operator")
-    }
-    if not service_map:
-        return
-
-    changed_assets = []
-    assets = InfraAsset.objects.exclude(system_name="").only(
-        "pk",
-        "system_name",
-        "service_id",
-        "customer_owner_name",
-        "appl_owner_name",
-        "partner_operator_name",
-    )
-    for asset in assets:
-        owners = service_map.get(asset.system_name)
-        if not owners:
-            continue
-        updated = False
-        if (asset.customer_owner_name or "") != owners["customer_owner_name"]:
-            asset.customer_owner_name = owners["customer_owner_name"]
-            updated = True
-        if (asset.appl_owner_name or "") != owners["appl_owner_name"]:
-            asset.appl_owner_name = owners["appl_owner_name"]
-            updated = True
-        if (asset.partner_operator_name or "") != owners["partner_operator_name"]:
-            asset.partner_operator_name = owners["partner_operator_name"]
-            updated = True
-        if asset.service_id != owners["id"]:
-            asset.service_id = owners["id"]
-            updated = True
-        if updated:
-            changed_assets.append(asset)
-
-    if changed_assets:
-        InfraAsset.objects.bulk_update(
-            changed_assets,
-            ["service", "customer_owner_name", "appl_owner_name", "partner_operator_name"],
-        )
-
-
 @login_required
 def dashboard(request):
     context = {
@@ -243,216 +203,85 @@ def dashboard(request):
 @login_required
 @permission_required("assets.view_infraasset", raise_exception=True)
 def asset_list(request):
-    sync_infra_asset_owners_from_service_master()
     query = request.GET.get("q", "").strip()
-    page = request.GET.get("page", "").strip()
-    failed_ids = {int(x) for x in request.GET.get("failed_ids", "").split(",") if x.isdigit()}
-    row_errors = request.session.pop("row_errors_asset", {})
-    qs = InfraAsset.objects.select_related("service").all().order_by("asset_key", "no")
+    qs = InfraAsset.objects.all().order_by("service_mgmt_no", "asset_mgmt_no")
     if query:
         qs = qs.filter(
-            Q(system_name__icontains=query)
+            Q(system_mgmt_no__icontains=query)
+            | Q(service_mgmt_no__icontains=query)
+            | Q(asset_mgmt_no__icontains=query)
+            | Q(service_name__icontains=query)
             | Q(customer_owner_name__icontains=query)
             | Q(appl_owner_name__icontains=query)
             | Q(partner_operator_name__icontains=query)
             | Q(hostname__icontains=query)
-            | Q(ip__icontains=query)
-            | Q(db_name__icontains=query)
-            | Q(dbms__icontains=query)
-        ).order_by("asset_key", "no")
+            | Q(server_type__icontains=query)
+            | Q(operation_dev__icontains=query)
+            | Q(network_zone__icontains=query)
+            | Q(platform_type__icontains=query)
+            | Q(port__icontains=query)
+            | Q(location__icontains=query)
+            | Q(mw__icontains=query)
+            | Q(os_dbms__icontains=query)
+            | Q(url_or_db_name__icontains=query)
+            | Q(ssl_domain__icontains=query)
+            | Q(cert_format__icontains=query)
+            | Q(remark1__icontains=query)
+            | Q(remark2__icontains=query)
+        )
 
     if request.GET.get("export") == "1":
         cols = [
-            "asset_key",
-            "system_name",
+            "system_mgmt_no",
+            "service_name",
             "customer_owner_name",
             "appl_owner_name",
             "partner_operator_name",
-            "use_flag",
-            "devops_type",
-            "infra_type",
+            "hostname",
+            "server_type",
+            "operation_dev",
             "network_zone",
             "platform_type",
-            "hostname",
             "ip",
-            "db_name",
-            "dbms",
+            "port",
             "location",
+            "mw",
+            "os_dbms",
+            "url_or_db_name",
+            "ssl_domain",
+            "cert_format",
+            "remark1",
+            "remark2",
         ]
         rename_map = {
-            "asset_key": "자산KEY",
-            "system_name": "시스템명",
+            "system_mgmt_no": "시스템 관리번호",
+            "service_name": "서비스명",
             "customer_owner_name": "고객사 담당자",
             "appl_owner_name": "Appl. 담당자",
-            "partner_operator_name": "협력사 운영자",
-            "use_flag": "사용여부",
-            "devops_type": "개발/운영",
-            "infra_type": "인프라 구분",
-            "network_zone": "네트웍 구분",
-            "platform_type": "플랫폼",
+            "partner_operator_name": "Appl. 운영자",
             "hostname": "Hostname",
+            "server_type": "서버 구분",
+            "operation_dev": "운영/개발",
+            "network_zone": "네트웍 구분",
+            "platform_type": "플랫폼 구분",
             "ip": "IP",
-            "db_name": "DB명",
-            "dbms": "DBMS",
+            "port": "Port",
             "location": "위치",
+            "mw": "MW",
+            "os_dbms": "OS/DBMS",
+            "url_or_db_name": "URL/DB명",
+            "ssl_domain": "SSL 도메인",
+            "cert_format": "인증서 포맷",
+            "remark1": "비고1",
+            "remark2": "비고2",
         }
-        df = pd.DataFrame(list(qs.values(*cols)), columns=cols).rename(columns=rename_map)
+        rows = list(qs.values(*cols))
+        df = pd.DataFrame(rows, columns=cols).rename(columns=rename_map)
         df = df[[rename_map[c] for c in cols]]
-        return to_excel_response(df, "infra_assets.xlsx")
-
-    if request.method == "POST":
-        action = request.POST.get("action", "")
-
-        if action == "import" and request.FILES.get("excel_file"):
-            df = pd.read_excel(request.FILES["excel_file"])
-            updated_count = 0
-            created_count = 0
-            skipped_count = 0
-            import_row_errors = {}
-            for excel_row_no, (_, row) in enumerate(df.iterrows(), start=2):
-                asset_key = str(get_row_value(row, ["asset_key", "자산KEY"], "")).strip()
-                system_name = str(get_row_value(row, ["system_name", "시스템명"], "")).strip()
-                if not system_name:
-                    skipped_count += 1
-                    import_row_errors[f"import_{excel_row_no}"] = f"{excel_row_no}행: 필수값 누락: 시스템명"
-                    continue
-                service_obj = ServiceMaster.objects.filter(name=system_name).first() if system_name else None
-                if system_name and not service_obj:
-                    skipped_count += 1
-                    import_row_errors[f"import_{excel_row_no}"] = (
-                        f"{excel_row_no}행: 서비스 마스터 미등록 시스템명: {system_name}"
-                    )
-                    continue
-                defaults = {
-                    "system_name": system_name,
-                    "customer_owner_name": service_obj.customer_owner if service_obj else "",
-                    "appl_owner_name": service_obj.appl_owner if service_obj else "",
-                    "partner_operator_name": service_obj.partner_operator if service_obj else "",
-                    "service": service_obj,
-                    "use_flag": str(get_row_value(row, ["use_flag", "사용여부"], "Y")).strip() or "Y",
-                    "devops_type": str(get_row_value(row, ["devops_type", "개발/운영"], "")).strip(),
-                    "infra_type": str(get_row_value(row, ["infra_type", "인프라 구분"], "")).strip(),
-                    "network_zone": str(get_row_value(row, ["network_zone", "네트웍 구분"], "")).strip(),
-                    "platform_type": str(get_row_value(row, ["platform_type", "플랫폼"], "")).strip(),
-                    "hostname": str(get_row_value(row, ["hostname", "Hostname"], "")).strip(),
-                    "ip": (str(get_row_value(row, ["ip", "IP"], "")).strip() or None),
-                    "db_name": str(get_row_value(row, ["db_name", "DB명"], "")).strip(),
-                    "dbms": str(get_row_value(row, ["dbms", "DBMS"], "")).strip(),
-                    "location": str(get_row_value(row, ["location", "위치"], "")).strip(),
-                }
-                if asset_key:
-                    updated = InfraAsset.objects.filter(asset_key=asset_key).update(**defaults)
-                    if updated:
-                        updated_count += 1
-                    elif defaults["system_name"]:
-                        InfraAsset.objects.create(asset_key=asset_key, **defaults)
-                        created_count += 1
-                    else:
-                        skipped_count += 1
-                elif defaults["system_name"]:
-                    InfraAsset.objects.create(**defaults)
-                    created_count += 1
-                else:
-                    skipped_count += 1
-            messages.success(
-                request,
-                f"엑셀 import 완료: 업데이트 {updated_count}건 / 인서트 {created_count}건 / 스킵 {skipped_count}건",
-            )
-            if import_row_errors:
-                request.session["row_errors_asset"] = import_row_errors
-            return redirect(build_list_redirect(request.path, query=query, page=page))
-
-        if action == "save":
-            rows = json.loads(request.POST.get("rows_json", "[]"))
-            deleted_ids = json.loads(request.POST.get("deleted_ids_json", "[]"))
-            failed_ids = []
-            row_errors = {}
-            invalid_system_names = set()
-            if deleted_ids:
-                try:
-                    InfraAsset.objects.filter(pk__in=deleted_ids).delete()
-                except Exception as exc:
-                    for xid in [x for x in deleted_ids if str(x).isdigit()]:
-                        failed_ids.append(xid)
-                        row_errors[str(xid)] = f"삭제 실패: {build_error_message(exc)}"
-
-            for row in rows:
-                pk = str(row.get("id", "")).strip()
-                asset_key = str(row.get("asset_key", "")).strip()
-                system_name = str(row.get("system_name", "")).strip()
-                if not pk and not system_name:
-                    continue
-                service_obj = ServiceMaster.objects.filter(name=system_name).first() if system_name else None
-                if system_name and not service_obj:
-                    if pk:
-                        failed_ids.append(pk)
-                        row_errors[str(pk)] = "서비스 마스터에 등록된 시스템명만 입력 가능합니다."
-                    else:
-                        invalid_system_names.add(system_name)
-                    continue
-
-                payload = {
-                    "system_name": system_name,
-                    "customer_owner_name": service_obj.customer_owner if service_obj else "",
-                    "appl_owner_name": service_obj.appl_owner if service_obj else "",
-                    "partner_operator_name": service_obj.partner_operator if service_obj else "",
-                    "service": service_obj,
-                    "use_flag": (row.get("use_flag") or "Y").strip(),
-                    "devops_type": (row.get("devops_type") or "").strip(),
-                    "infra_type": (row.get("infra_type") or "").strip(),
-                    "network_zone": (row.get("network_zone") or "").strip(),
-                    "platform_type": (row.get("platform_type") or "").strip(),
-                    "hostname": (row.get("hostname") or "").strip(),
-                    "ip": (row.get("ip") or "").strip() or None,
-                    "db_name": (row.get("db_name") or "").strip(),
-                    "dbms": (row.get("dbms") or "").strip(),
-                    "location": (row.get("location") or "").strip(),
-                }
-
-                if pk:
-                    try:
-                        InfraAsset.objects.filter(pk=pk).update(**payload)
-                    except Exception as exc:
-                        failed_ids.append(pk)
-                        row_errors[str(pk)] = build_error_message(exc)
-                elif payload["system_name"]:
-                    try:
-                        InfraAsset.objects.create(asset_key=asset_key or None, **payload)
-                    except Exception as exc:
-                        if asset_key:
-                            dup = InfraAsset.objects.filter(asset_key=asset_key).values_list("pk", flat=True).first()
-                            if dup:
-                                failed_ids.append(dup)
-                                row_errors[str(dup)] = build_error_message(exc)
-
-            if invalid_system_names:
-                messages.error(
-                    request,
-                    "서비스 마스터 미등록 시스템명으로 저장할 수 없습니다: " + ", ".join(sorted(invalid_system_names)),
-                )
-                row_errors["__global__"] = "서비스 마스터 미등록 시스템명 입력"
-            request.session["row_errors_asset"] = row_errors
-            return redirect(build_list_redirect(request.path, query=query, page=page, failed_ids=failed_ids))
+        return to_excel_response(df, "system_integrated_info.xlsx")
 
     paginator = Paginator(qs, 100)
     page_obj = paginator.get_page(request.GET.get("page"))
-    service_names = list(ServiceMaster.objects.values_list("name", flat=True).order_by("name"))
-    service_owner_map = {
-        row["name"]: {
-            "customer_owner_name": row["customer_owner"] or "",
-            "appl_owner_name": row["appl_owner"] or "",
-            "partner_operator_name": row["partner_operator"] or "",
-        }
-        for row in ServiceMaster.objects.values("name", "customer_owner", "appl_owner", "partner_operator")
-    }
-    code_labels = build_code_label_maps(["use_flag", "devops_type", "infra_type", "network_zone", "platform_type"])
-    code_options = {
-        "use_flag": build_code_options("use_flag", include_blank=False),
-        "devops_type": build_code_options("devops_type"),
-        "infra_type": build_code_options("infra_type"),
-        "network_zone": build_code_options("network_zone"),
-        "platform_type": build_code_options("platform_type"),
-    }
     return render(
         request,
         "web/asset_list.html",
@@ -460,13 +289,6 @@ def asset_list(request):
             "assets": page_obj.object_list,
             "page_obj": page_obj,
             "q": query,
-            "code_labels": code_labels,
-            "code_options": code_options,
-            "service_names": service_names,
-            "service_owner_map": service_owner_map,
-            "failed_ids": failed_ids,
-            "row_errors": row_errors,
-            "popup_error_summary": summarize_row_errors(row_errors),
         },
     )
 
@@ -500,8 +322,8 @@ def service_master_list(request):
             "service_level",
             "itgc",
             "customer_owner",
-            "appl_owner",
             "partner_operator",
+            "appl_owner",
             "server_owner",
             "db_owner",
             "opened_at",
@@ -535,8 +357,8 @@ def service_master_list(request):
             "service_level": "서비스 수준",
             "itgc": "ITGC 여부",
             "customer_owner": "고객사 담당자",
-            "appl_owner": "Appl. 담당자",
-            "partner_operator": "협력사 운영자",
+            "partner_operator": "Appl. 담당자",
+            "appl_owner": "Appl. 운영자",
             "server_owner": "서버 담당자",
             "db_owner": "DB 담당자",
             "opened_at": "서비스 오픈일",
@@ -588,8 +410,10 @@ def service_master_list(request):
                     "service_level": str(get_row_value(row, ["service_level", "서비스 수준"], "")).strip(),
                     "itgc": parse_bool(get_row_value(row, ["itgc", "ITGC 여부"], "")),
                     "customer_owner": str(get_row_value(row, ["customer_owner", "고객사 담당자"], "")).strip(),
-                    "appl_owner": str(get_row_value(row, ["appl_owner", "Appl. 담당자"], "")).strip(),
-                    "partner_operator": str(get_row_value(row, ["partner_operator", "협력사 운영자"], "")).strip(),
+                    "partner_operator": str(
+                        get_row_value(row, ["partner_operator", "Appl. 담당자", "협력사 운영자"], "")
+                    ).strip(),
+                    "appl_owner": build_appl_owner_names(service_name),
                     "server_owner": str(get_row_value(row, ["server_owner", "서버 담당자"], "")).strip(),
                     "db_owner": str(get_row_value(row, ["db_owner", "DB 담당자"], "")).strip(),
                     "opened_at": parse_date(get_row_value(row, ["opened_at", "서비스 오픈일"], "")),
@@ -613,13 +437,8 @@ def service_master_list(request):
                     "bs_share_note": str(get_row_value(row, ["bs_share_note", "BS Share 비고"], "")).strip(),
                     "notes": str(get_row_value(row, ["notes", "비고"], "")).strip(),
                 }
-                owner_names = [
-                    defaults["customer_owner"],
-                    defaults["appl_owner"],
-                    defaults["partner_operator"],
-                    defaults["server_owner"],
-                    defaults["db_owner"],
-                ]
+                owner_names = []
+                owner_names.extend(split_owner_names(defaults["appl_owner"]))
                 if any(name and not PersonMaster.objects.filter(name=name).exists() for name in owner_names):
                     skipped_count += 1
                     invalid_names = sorted(
@@ -630,8 +449,11 @@ def service_master_list(request):
                     )
                     continue
                 if mgmt_no:
-                    updated = ServiceMaster.objects.filter(service_mgmt_no=mgmt_no).update(**defaults)
-                    if updated:
+                    existing = ServiceMaster.objects.filter(service_mgmt_no=mgmt_no).first()
+                    if existing:
+                        for key, val in defaults.items():
+                            setattr(existing, key, val)
+                        existing.save()
                         updated_count += 1
                     elif defaults["name"]:
                         ServiceMaster.objects.create(service_mgmt_no=mgmt_no, **defaults)
@@ -687,8 +509,8 @@ def service_master_list(request):
                     "service_level": (row.get("service_level") or "").strip(),
                     "itgc": parse_bool(row.get("itgc")),
                     "customer_owner": (row.get("customer_owner") or "").strip(),
-                    "appl_owner": (row.get("appl_owner") or "").strip(),
                     "partner_operator": (row.get("partner_operator") or "").strip(),
+                    "appl_owner": build_appl_owner_names(name),
                     "server_owner": (row.get("server_owner") or "").strip(),
                     "db_owner": (row.get("db_owner") or "").strip(),
                     "opened_at": opened_at,
@@ -712,25 +534,23 @@ def service_master_list(request):
                     "bs_share_note": (row.get("bs_share_note") or "").strip(),
                     "notes": (row.get("notes") or "").strip(),
                 }
-                owner_names = [
-                    payload["customer_owner"],
-                    payload["appl_owner"],
-                    payload["partner_operator"],
-                    payload["server_owner"],
-                    payload["db_owner"],
-                ]
+                owner_names = []
+                owner_names.extend(split_owner_names(payload["appl_owner"]))
                 if any(name and not PersonMaster.objects.filter(name=name).exists() for name in owner_names):
                     if pk:
                         failed_ids.append(pk)
                         row_errors[str(pk)] = "담당자 마스터에 등록된 성명만 입력 가능합니다."
                     else:
-                        for name in owner_names:
-                            if name and not PersonMaster.objects.filter(name=name).exists():
-                                invalid_person_names.add(name)
+                        for owner_part in owner_names:
+                            if owner_part and not PersonMaster.objects.filter(name=owner_part).exists():
+                                invalid_person_names.add(owner_part)
                     continue
                 if pk:
                     try:
-                        ServiceMaster.objects.filter(pk=pk).update(**payload)
+                        obj = ServiceMaster.objects.get(pk=pk)
+                        for key, val in payload.items():
+                            setattr(obj, key, val)
+                        obj.save()
                     except Exception as exc:
                         failed_ids.append(pk)
                         row_errors[str(pk)] = build_error_message(exc)
@@ -754,7 +574,6 @@ def service_master_list(request):
 
     paginator = Paginator(qs, 100)
     page_obj = paginator.get_page(request.GET.get("page"))
-    person_names = list(PersonMaster.objects.values_list("name", flat=True).order_by("name"))
     return render(
         request,
         "web/service_master_list.html",
@@ -765,7 +584,6 @@ def service_master_list(request):
             "failed_ids": failed_ids,
             "row_errors": row_errors,
             "popup_error_summary": summarize_row_errors(row_errors),
-            "person_names": person_names,
         },
     )
 
@@ -872,8 +690,11 @@ def person_master_list(request):
                     )
                     continue
                 if mgmt_no:
-                    updated = PersonMaster.objects.filter(person_mgmt_no=mgmt_no).update(**defaults)
-                    if updated:
+                    existing = PersonMaster.objects.filter(person_mgmt_no=mgmt_no).first()
+                    if existing:
+                        for key, val in defaults.items():
+                            setattr(existing, key, val)
+                        existing.save()
                         updated_count += 1
                     elif defaults["name"]:
                         PersonMaster.objects.create(person_mgmt_no=mgmt_no, **defaults)
@@ -959,7 +780,10 @@ def person_master_list(request):
                     continue
                 if pk:
                     try:
-                        PersonMaster.objects.filter(pk=pk).update(**payload)
+                        obj = PersonMaster.objects.get(pk=pk)
+                        for key, val in payload.items():
+                            setattr(obj, key, val)
+                        obj.save()
                     except Exception as exc:
                         failed_ids.append(pk)
                         row_errors[str(pk)] = build_error_message(exc)
@@ -1126,8 +950,11 @@ def component_master_list(request):
                     "remark2": str(get_row_value(row, ["remark2", "비고2"], "")).strip(),
                 }
                 if mgmt_no:
-                    updated = Component.objects.filter(asset_mgmt_no=mgmt_no).update(**defaults)
-                    if updated:
+                    existing = Component.objects.filter(asset_mgmt_no=mgmt_no).first()
+                    if existing:
+                        for key, val in defaults.items():
+                            setattr(existing, key, val)
+                        existing.save()
                         updated_count += 1
                     elif defaults["hostname"]:
                         Component.objects.create(asset_mgmt_no=mgmt_no, **defaults)
@@ -1195,7 +1022,10 @@ def component_master_list(request):
                 }
                 if pk:
                     try:
-                        Component.objects.filter(pk=pk).update(**payload)
+                        comp = Component.objects.get(pk=pk)
+                        for key, val in payload.items():
+                            setattr(comp, key, val)
+                        comp.save()
                     except Exception as exc:
                         failed_ids.append(pk)
                         row_errors[str(pk)] = build_error_message(exc)

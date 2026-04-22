@@ -33,7 +33,7 @@ class Command(BaseCommand):
                 "codes": [
                     ("customer_it", "고객사 IT 담당"),
                     ("sk_owner", "Infa 담당자(SK)"),
-                    ("partner", "협력사 담당"),
+                    ("partner", "Appl. 운영자"),
                     ("developer", "개발담당"),
                     ("operator", "운영담당"),
                 ],

@@ -17,13 +17,14 @@ class Command(BaseCommand):
 
         for asset in InfraAsset.objects.all():
             text = (
-                f"[인프라] {asset.system_name} IP:{asset.ip or ''} "
-                f"DB:{asset.dbms or ''}/{asset.db_name or ''} "
-                f"인프라:{asset.infra_type} 네트워크:{asset.network_zone} 플랫폼:{asset.platform_type} "
-                f"HOST:{asset.hostname} URL:{asset.url} 위치:{asset.location} "
-                f"메모:{asset.remark1} {asset.remark2}"
+                f"[시스템통합] {asset.system_mgmt_no} {asset.service_name} "
+                f"서비스:{asset.service_mgmt_no} 자산:{asset.asset_mgmt_no} "
+                f"HOST:{asset.hostname} IP:{asset.ip or ''} MW:{asset.mw} OS/DBMS:{asset.os_dbms} "
+                f"URL/DB:{asset.url_or_db_name} 위치:{asset.location} "
+                f"담당:고객사:{asset.customer_owner_name} Appl:{asset.appl_owner_name} 운영:{asset.partner_operator_name} "
+                f"비고:{asset.remark1} {asset.remark2}"
             )
-            items.append((text, {"type": "infra", "id": asset.pk, "name": asset.system_name}))
+            items.append((text, {"type": "infra", "id": asset.pk, "name": asset.service_name}))
 
         for service in ServiceMaster.objects.all():
             text = (
@@ -34,8 +35,11 @@ class Command(BaseCommand):
             items.append((text, {"type": "service", "id": service.pk, "name": service.name}))
 
         for comp in Component.objects.all():
-            text = f"[컴포넌트] {comp.name} {comp.version} 유형:{comp.comp_type} 용도:{comp.usage} EOS:{comp.eos}"
-            items.append((text, {"type": "component", "id": comp.pk, "name": comp.name}))
+            text = (
+                f"[자산] {comp.hostname} 시스템명:{comp.system_name} 구분:{comp.server_type} "
+                f"운영개발:{comp.operation_dev} IP:{comp.ip or ''} MW:{comp.mw} OS/DBMS:{comp.os_dbms}"
+            )
+            items.append((text, {"type": "component", "id": comp.pk, "name": comp.hostname or comp.asset_mgmt_no}))
 
         for person in PersonMaster.objects.all():
             text = (
