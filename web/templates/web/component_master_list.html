@@ -72,7 +72,7 @@
 <div class="list-screen">
 <h2>자산 마스터</h2>
 <form class="search-box" method="get">
-    <input type="text" class="search-input" name="q" value="{{ q }}" placeholder="Hostname/서비스명/IP/서버 구분/플랫폼 검색">
+    <input type="text" class="search-input" name="q" value="{{ q }}">
     <button type="submit">검색</button>
     <a class="btn-like" href="{% url 'web:component_master_list' %}">초기화</a>
     <span class="muted">조회건수: {{ page_obj.paginator.count }}건</span>

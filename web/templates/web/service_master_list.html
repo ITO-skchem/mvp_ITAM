@@ -55,24 +55,121 @@
     #service-table .sticky-boundary {
         box-shadow: 1px 0 0 #b3b3b3;
     }
-    #service-table th.appl-operator-col,
-    #service-table td.appl-operator-col {
-        width: 8em;
-        min-width: 8em;
-        max-width: 8em;
+    #service-table .col-w {
+        width: var(--col-w);
+        min-width: var(--col-w);
+        max-width: var(--col-w);
+        box-sizing: border-box;
     }
-    #service-table td.appl-operator-col span[data-display="appl_owner"] {
+    #service-table th.col-system-type,
+    #service-table td.col-system-type { --col-w: 8em; }
+    #service-table th.col-description,
+    #service-table td.col-description { --col-w: 5em; }
+    #service-table th.col-operation-type,
+    #service-table td.col-operation-type { --col-w: 8em; }
+    #service-table th.col-service-grade,
+    #service-table td.col-service-grade { --col-w: 8em; }
+    #service-table th.col-service-level,
+    #service-table td.col-service-level { --col-w: 8em; }
+    #service-table th.col-itgc,
+    #service-table td.col-itgc { --col-w: 8em; }
+    #service-table th.col-customer-owner,
+    #service-table td.col-customer-owner { --col-w: 8em; }
+    #service-table th.col-partner-operator,
+    #service-table td.col-partner-operator { --col-w: 8em; }
+    #service-table th.col-appl-owner,
+    #service-table td.col-appl-owner { --col-w: 10em; }
+    #service-table th.col-server-owner,
+    #service-table td.col-server-owner { --col-w: 8em; }
+    #service-table th.col-db-owner,
+    #service-table td.col-db-owner { --col-w: 8em; }
+    #service-table th.col-build-type,
+    #service-table td.col-build-type { --col-w: 8em; }
+    #service-table th.col-dev-language,
+    #service-table td.col-dev-language { --col-w: 17em; }
+    #service-table th.col-dev-framework,
+    #service-table td.col-dev-framework { --col-w: 17em; }
+    #service-table th.col-cloud-type,
+    #service-table td.col-cloud-type { --col-w: 8em; }
+    #service-table th.col-dbms,
+    #service-table td.col-dbms { --col-w: 17em; }
+    #service-table th.col-scm-tool,
+    #service-table td.col-scm-tool { --col-w: 8em; }
+    #service-table th.col-deploy-tool,
+    #service-table td.col-deploy-tool { --col-w: 8em; }
+    #service-table th.col-monitoring-tool,
+    #service-table td.col-monitoring-tool { --col-w: 8em; }
+    #service-table th.col-flag,
+    #service-table td.col-flag { --col-w: 6em; }
+    #service-table th.col-bs-share-ratio,
+    #service-table td.col-bs-share-ratio { --col-w: 8em; }
+    #service-table th.col-bs-share-note,
+    #service-table td.col-bs-share-note { --col-w: 17em; }
+    #service-table th.col-notes,
+    #service-table td.col-notes { --col-w: 17em; }
+    #service-table td.col-w input[type="text"],
+    #service-table td.col-w input[type="number"],
+    #service-table td.col-w input[type="date"] {
+        width: 100%;
+        max-width: 100%;
+        box-sizing: border-box;
+    }
+    #service-table td.col-appl-owner span[data-display="appl_owner"] {
         display: inline-block;
         width: 100%;
         max-width: 100%;
         box-sizing: border-box;
         vertical-align: middle;
     }
+    /* ITGC, GC~BS: 32px 정사각형, 체크 시 파란 채움 없이 얇은 검은 체크만 (SVG) */
+    #service-table th.col-itgc,
+    #service-table th.col-flag {
+        text-align: center;
+        vertical-align: middle;
+    }
+    #service-table td.col-itgc,
+    #service-table td.col-flag {
+        text-align: center;
+        vertical-align: middle;
+    }
+    #service-table td.col-itgc input[type="checkbox"],
+    #service-table td.col-flag input[type="checkbox"] {
+        appearance: none;
+        -webkit-appearance: none;
+        width: 32px;
+        height: 32px;
+        min-width: 32px;
+        min-height: 32px;
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+        vertical-align: middle;
+        border: 1px solid #666;
+        border-radius: 3px;
+        background-color: #fff;
+        background-repeat: no-repeat;
+        background-position: center;
+        background-size: 0 0;
+        cursor: pointer;
+        accent-color: transparent;
+    }
+    #service-table td.col-itgc input[type="checkbox"]:checked,
+    #service-table td.col-flag input[type="checkbox"]:checked {
+        background-color: #fff;
+        border-color: #333;
+        background-size: 15px 15px;
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 14' fill='none' stroke='%231a1a1a' stroke-width='1.15' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 7.2l2.8 2.8L11 4.2'/%3E%3C/svg%3E");
+    }
+    #service-table td.col-itgc input[type="checkbox"]:focus-visible,
+    #service-table td.col-flag input[type="checkbox"]:focus-visible {
+        outline: 2px solid #4a6fa5;
+        outline-offset: 1px;
+    }
 </style>
 <div class="list-screen">
 <h2>서비스 마스터</h2>
 <form class="search-box" method="get">
-    <input type="text" class="search-input" name="q" value="{{ q }}" placeholder="서비스명/서비스구분/설명 검색">
+    <input type="text" class="search-input" name="q" value="{{ q }}">
     <button type="submit">검색</button>
     <a class="btn-like" href="{% url 'web:service_master_list' %}">초기화</a>
     <span class="muted">조회건수: {{ page_obj.paginator.count }}건</span>
@@ -93,37 +190,37 @@
                     <th class="sticky-col select-col"><input type="checkbox" id="service-check-all"></th>
                     <th class="sticky-col mgmt-col">서비스관리번호</th>
                     <th class="sticky-col service-name-col sticky-boundary">서비스명</th>
-                    <th>서비스 구분</th>
-                    <th>설명</th>
-                    <th>운영구분</th>
-                    <th>서비스 등급</th>
-                    <th>서비스 수준</th>
-                    <th>ITGC 여부</th>
-                    <th>고객사 담당자</th>
-                    <th>Appl. 담당자</th>
-                    <th class="appl-operator-col">Appl. 운영자</th>
-                    <th>서버 담당자</th>
-                    <th>DB 담당자</th>
+                    <th class="col-w col-system-type">서비스 구분</th>
+                    <th class="col-w col-description">설명</th>
+                    <th class="col-w col-operation-type">운영구분</th>
+                    <th class="col-w col-service-grade">서비스 등급</th>
+                    <th class="col-w col-service-level">서비스 수준</th>
+                    <th class="col-w col-itgc">ITGC 여부</th>
+                    <th class="col-w col-customer-owner">고객사 담당자</th>
+                    <th class="col-w col-partner-operator">Appl. 담당자</th>
+                    <th class="col-w col-appl-owner">Appl. 운영자</th>
+                    <th class="col-w col-server-owner">서버 담당자</th>
+                    <th class="col-w col-db-owner">DB 담당자</th>
                     <th>서비스 오픈일</th>
-                    <th>구축 구분</th>
-                    <th>개발 언어</th>
-                    <th>개발 F/W</th>
-                    <th>Cloud 구분</th>
-                    <th>DBMS</th>
-                    <th>형상관리</th>
-                    <th>배포도구</th>
-                    <th>모니터링도구</th>
-                    <th>GC</th>
-                    <th>파마</th>
-                    <th>플라즈마</th>
-                    <th>MU</th>
-                    <th>엔티스</th>
-                    <th>대정</th>
-                    <th>DY</th>
-                    <th>BS</th>
-                    <th>BS Share 비율</th>
-                    <th>BS Share 비고</th>
-                    <th>비고</th>
+                    <th class="col-w col-build-type">구축 구분</th>
+                    <th class="col-w col-dev-language">개발 언어</th>
+                    <th class="col-w col-dev-framework">개발 F/W</th>
+                    <th class="col-w col-cloud-type">Cloud 구분</th>
+                    <th class="col-w col-dbms">DBMS</th>
+                    <th class="col-w col-scm-tool">형상관리</th>
+                    <th class="col-w col-deploy-tool">배포도구</th>
+                    <th class="col-w col-monitoring-tool">모니터링도구</th>
+                    <th class="col-w col-flag">GC</th>
+                    <th class="col-w col-flag">파마</th>
+                    <th class="col-w col-flag">플라즈마</th>
+                    <th class="col-w col-flag">MU</th>
+                    <th class="col-w col-flag">엔티스</th>
+                    <th class="col-w col-flag">대정</th>
+                    <th class="col-w col-flag">DY</th>
+                    <th class="col-w col-flag">BS</th>
+                    <th class="col-w col-bs-share-ratio">BS Share 비율</th>
+                    <th class="col-w col-bs-share-note">BS Share 비고</th>
+                    <th class="col-w col-notes">비고</th>
                     <th>오류</th>
                 </tr>
             </thead>
@@ -137,37 +234,37 @@
                         <span class="key-display">{{ s.service_mgmt_no }}</span>
                     </td>
                     <td class="sticky-col service-name-col sticky-boundary"><input type="text" data-field="name" value="{{ s.name }}"></td>
-                    <td><input type="text" data-field="system_type" value="{{ s.system_type }}"></td>
-                    <td><input type="text" data-field="description" value="{{ s.description }}"></td>
-                    <td><input type="text" data-field="operation_type" value="{{ s.operation_type }}"></td>
-                    <td><input type="text" data-field="service_grade" value="{{ s.service_grade }}"></td>
-                    <td><input type="text" data-field="service_level" value="{{ s.service_level }}"></td>
-                    <td><input type="checkbox" data-field="itgc" {% if s.itgc %}checked{% endif %}></td>
-                    <td><input type="text" data-field="customer_owner" value="{{ s.customer_owner }}"></td>
-                    <td><input type="text" data-field="partner_operator" value="{{ s.partner_operator }}"></td>
-                    <td class="appl-operator-col"><span data-display="appl_owner">{{ s.appl_owner }}</span></td>
-                    <td><input type="text" data-field="server_owner" value="{{ s.server_owner }}"></td>
-                    <td><input type="text" data-field="db_owner" value="{{ s.db_owner }}"></td>
+                    <td class="col-w col-system-type"><input type="text" data-field="system_type" value="{{ s.system_type }}"></td>
+                    <td class="col-w col-description"><input type="text" data-field="description" value="{{ s.description }}"></td>
+                    <td class="col-w col-operation-type"><input type="text" data-field="operation_type" value="{{ s.operation_type }}"></td>
+                    <td class="col-w col-service-grade"><input type="text" data-field="service_grade" value="{{ s.service_grade }}"></td>
+                    <td class="col-w col-service-level"><input type="text" data-field="service_level" value="{{ s.service_level }}"></td>
+                    <td class="col-w col-itgc"><input type="checkbox" data-field="itgc" {% if s.itgc %}checked{% endif %}></td>
+                    <td class="col-w col-customer-owner"><input type="text" data-field="customer_owner" value="{{ s.customer_owner }}"></td>
+                    <td class="col-w col-partner-operator"><input type="text" data-field="partner_operator" value="{{ s.partner_operator }}"></td>
+                    <td class="col-w col-appl-owner"><span data-display="appl_owner">{{ s.appl_owner }}</span></td>
+                    <td class="col-w col-server-owner"><input type="text" data-field="server_owner" value="{{ s.server_owner }}"></td>
+                    <td class="col-w col-db-owner"><input type="text" data-field="db_owner" value="{{ s.db_owner }}"></td>
                     <td><input type="date" data-field="opened_at" value="{{ s.opened_at|date:'Y-m-d' }}"></td>
-                    <td><input type="text" data-field="build_type" value="{{ s.build_type }}"></td>
-                    <td><input type="text" data-field="dev_language" value="{{ s.dev_language }}"></td>
-                    <td><input type="text" data-field="dev_framework" value="{{ s.dev_framework }}"></td>
-                    <td><input type="text" data-field="cloud_type" value="{{ s.cloud_type }}"></td>
-                    <td><input type="text" data-field="dbms" value="{{ s.dbms }}"></td>
-                    <td><input type="text" data-field="scm_tool" value="{{ s.scm_tool }}"></td>
-                    <td><input type="text" data-field="deploy_tool" value="{{ s.deploy_tool }}"></td>
-                    <td><input type="text" data-field="monitoring_tool" value="{{ s.monitoring_tool }}"></td>
-                    <td><input type="checkbox" data-field="gc" {% if s.gc %}checked{% endif %}></td>
-                    <td><input type="checkbox" data-field="pharma" {% if s.pharma %}checked{% endif %}></td>
-                    <td><input type="checkbox" data-field="plasma" {% if s.plasma %}checked{% endif %}></td>
-                    <td><input type="checkbox" data-field="mu" {% if s.mu %}checked{% endif %}></td>
-                    <td><input type="checkbox" data-field="entis" {% if s.entis %}checked{% endif %}></td>
-                    <td><input type="checkbox" data-field="daejung" {% if s.daejung %}checked{% endif %}></td>
-                    <td><input type="checkbox" data-field="dy" {% if s.dy %}checked{% endif %}></td>
-                    <td><input type="checkbox" data-field="bs" {% if s.bs %}checked{% endif %}></td>
-                    <td><input type="number" step="0.01" data-field="bs_share_ratio" value="{{ s.bs_share_ratio|default:'' }}"></td>
-                    <td><input type="text" data-field="bs_share_note" value="{{ s.bs_share_note }}"></td>
-                    <td><input type="text" data-field="notes" value="{{ s.notes }}"></td>
+                    <td class="col-w col-build-type"><input type="text" data-field="build_type" value="{{ s.build_type }}"></td>
+                    <td class="col-w col-dev-language"><input type="text" data-field="dev_language" value="{{ s.dev_language }}"></td>
+                    <td class="col-w col-dev-framework"><input type="text" data-field="dev_framework" value="{{ s.dev_framework }}"></td>
+                    <td class="col-w col-cloud-type"><input type="text" data-field="cloud_type" value="{{ s.cloud_type }}"></td>
+                    <td class="col-w col-dbms"><input type="text" data-field="dbms" value="{{ s.dbms }}"></td>
+                    <td class="col-w col-scm-tool"><input type="text" data-field="scm_tool" value="{{ s.scm_tool }}"></td>
+                    <td class="col-w col-deploy-tool"><input type="text" data-field="deploy_tool" value="{{ s.deploy_tool }}"></td>
+                    <td class="col-w col-monitoring-tool"><input type="text" data-field="monitoring_tool" value="{{ s.monitoring_tool }}"></td>
+                    <td class="col-w col-flag"><input type="checkbox" data-field="gc" {% if s.gc %}checked{% endif %}></td>
+                    <td class="col-w col-flag"><input type="checkbox" data-field="pharma" {% if s.pharma %}checked{% endif %}></td>
+                    <td class="col-w col-flag"><input type="checkbox" data-field="plasma" {% if s.plasma %}checked{% endif %}></td>
+                    <td class="col-w col-flag"><input type="checkbox" data-field="mu" {% if s.mu %}checked{% endif %}></td>
+                    <td class="col-w col-flag"><input type="checkbox" data-field="entis" {% if s.entis %}checked{% endif %}></td>
+                    <td class="col-w col-flag"><input type="checkbox" data-field="daejung" {% if s.daejung %}checked{% endif %}></td>
+                    <td class="col-w col-flag"><input type="checkbox" data-field="dy" {% if s.dy %}checked{% endif %}></td>
+                    <td class="col-w col-flag"><input type="checkbox" data-field="bs" {% if s.bs %}checked{% endif %}></td>
+                    <td class="col-w col-bs-share-ratio"><input type="number" step="0.01" data-field="bs_share_ratio" value="{{ s.bs_share_ratio|default:'' }}"></td>
+                    <td class="col-w col-bs-share-note"><input type="text" data-field="bs_share_note" value="{{ s.bs_share_note }}"></td>
+                    <td class="col-w col-notes"><input type="text" data-field="notes" value="{{ s.notes }}"></td>
                     <td style="color:#b10000;">{{ row_errors|lookup:s.id }}</td>
                 </tr>
                 {% empty %}

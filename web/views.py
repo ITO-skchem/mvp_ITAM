@@ -186,6 +186,37 @@ def get_row_value(row, candidates, default=""):
     return default
 
 
+_TEXT_SEARCH_FIELD_TYPES = frozenset(
+    {
+        "CharField",
+        "TextField",
+        "EmailField",
+        "URLField",
+        "SlugField",
+        "GenericIPAddressField",
+    }
+)
+
+
+def build_model_text_search_q(model_class, query):
+    """리스트 검색: 모델의 문자열 계열 컬럼 전부에 대해 OR(icontains) 조건을 만든다."""
+    text = (query or "").strip()
+    if not text:
+        return Q()
+    combined = Q()
+    for field in model_class._meta.get_fields():
+        if not getattr(field, "concrete", True):
+            continue
+        if getattr(field, "many_to_many", False) or getattr(field, "one_to_many", False):
+            continue
+        if field.get_internal_type() == "JSONField":
+            continue
+        if field.get_internal_type() not in _TEXT_SEARCH_FIELD_TYPES:
+            continue
+        combined |= Q(**{f"{field.attname}__icontains": text})
+    return combined
+
+
 @login_required
 def dashboard(request):
     context = {
@@ -206,38 +237,16 @@ def asset_list(request):
     query = request.GET.get("q", "").strip()
     qs = InfraAsset.objects.all().order_by("service_mgmt_no", "asset_mgmt_no")
     if query:
-        qs = qs.filter(
-            Q(system_mgmt_no__icontains=query)
-            | Q(service_mgmt_no__icontains=query)
-            | Q(asset_mgmt_no__icontains=query)
-            | Q(service_name__icontains=query)
-            | Q(customer_owner_name__icontains=query)
-            | Q(appl_owner_name__icontains=query)
-            | Q(partner_operator_name__icontains=query)
-            | Q(hostname__icontains=query)
-            | Q(server_type__icontains=query)
-            | Q(operation_dev__icontains=query)
-            | Q(network_zone__icontains=query)
-            | Q(platform_type__icontains=query)
-            | Q(port__icontains=query)
-            | Q(location__icontains=query)
-            | Q(mw__icontains=query)
-            | Q(os_dbms__icontains=query)
-            | Q(url_or_db_name__icontains=query)
-            | Q(ssl_domain__icontains=query)
-            | Q(cert_format__icontains=query)
-            | Q(remark1__icontains=query)
-            | Q(remark2__icontains=query)
-        )
+        qs = qs.filter(build_model_text_search_q(InfraAsset, query))
 
     if request.GET.get("export") == "1":
         cols = [
             "system_mgmt_no",
             "service_name",
+            "hostname",
             "customer_owner_name",
             "appl_owner_name",
             "partner_operator_name",
-            "hostname",
             "server_type",
             "operation_dev",
             "network_zone",
@@ -309,7 +318,7 @@ def service_master_list(request):
     row_errors = request.session.pop("row_errors_service", {})
     qs = ServiceMaster.objects.all().order_by("service_mgmt_no", "name")
     if query:
-        qs = qs.filter(Q(name__icontains=query) | Q(system_type__icontains=query) | Q(description__icontains=query))
+        qs = qs.filter(build_model_text_search_q(ServiceMaster, query))
 
     if request.GET.get("export") == "1":
         cols = [
@@ -598,13 +607,12 @@ def person_master_list(request):
     row_errors = request.session.pop("row_errors_person", {})
     qs = PersonMaster.objects.all().order_by("person_mgmt_no", "name")
     if query:
-        qs = qs.filter(
-            Q(name__icontains=query)
-            | Q(employee_no__icontains=query)
-            | Q(system_name__icontains=query)
-            | Q(company__icontains=query)
-            | Q(email__icontains=query)
-        )
+        q = build_model_text_search_q(PersonMaster, query)
+        if query.strip() == "상주":
+            q |= Q(resident=True)
+        elif query.strip() == "비상주":
+            q |= Q(resident=False)
+        qs = qs.filter(q)
 
     if request.GET.get("export") == "1":
         cols = [
@@ -847,14 +855,7 @@ def component_master_list(request):
     row_errors = request.session.pop("row_errors_component", {})
     qs = Component.objects.all().order_by("asset_mgmt_no")
     if query:
-        qs = qs.filter(
-            Q(hostname__icontains=query)
-            | Q(system_name__icontains=query)
-            | Q(server_type__icontains=query)
-            | Q(platform_type__icontains=query)
-            | Q(ip__icontains=query)
-            | Q(url_or_db_name__icontains=query)
-        )
+        qs = qs.filter(build_model_text_search_q(Component, query))
 
     if request.GET.get("export") == "1":
         cols = [
