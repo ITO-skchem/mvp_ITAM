@@ -29,6 +29,24 @@
         min-width: var(--w-host);
         max-width: var(--w-host);
     }
+    #asset-table th.server-type-col,
+    #asset-table td.server-type-col {
+        width: 8em !important;
+        min-width: 8em !important;
+        max-width: 8em !important;
+    }
+    #asset-table th.operation-dev-col,
+    #asset-table td.operation-dev-col {
+        width: 5em !important;
+        min-width: 5em !important;
+        max-width: 5em !important;
+    }
+    #asset-table th.network-zone-col,
+    #asset-table td.network-zone-col {
+        width: 8em !important;
+        min-width: 8em !important;
+        max-width: 8em !important;
+    }
     #asset-table .sticky-col {
         position: sticky;
         background: #fff;
@@ -74,9 +92,9 @@
                     <th>고객사 담당자</th>
                     <th>Appl. 담당자</th>
                     <th>Appl. 운영자</th>
-                    <th>서버 구분</th>
-                    <th>운영/개발</th>
-                    <th>네트웍 구분</th>
+                    <th class="server-type-col">서버 구분</th>
+                    <th class="operation-dev-col">운영/개발</th>
+                    <th class="network-zone-col">네트웍 구분</th>
                     <th>플랫폼 구분</th>
                     <th>IP</th>
                     <th>Port</th>
@@ -99,9 +117,9 @@
                     <td>{{ row.customer_owner_name }}</td>
                     <td>{{ row.appl_owner_name }}</td>
                     <td>{{ row.partner_operator_name }}</td>
-                    <td>{{ row.server_type }}</td>
-                    <td>{{ row.operation_dev }}</td>
-                    <td>{{ row.network_zone }}</td>
+                    <td class="server-type-col">{{ row.server_type }}</td>
+                    <td class="operation-dev-col">{{ row.operation_dev }}</td>
+                    <td class="network-zone-col">{{ row.network_zone }}</td>
                     <td>{{ row.platform_type }}</td>
                     <td>{{ row.ip|default:"" }}</td>
                     <td>{{ row.port }}</td>

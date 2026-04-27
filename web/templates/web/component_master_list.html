@@ -47,6 +47,112 @@
         max-width: 100%;
         box-sizing: border-box;
     }
+    #component-table th.server-type-col,
+    #component-table td.server-type-col {
+        width: 8em !important;
+        min-width: 8em !important;
+        max-width: 8em !important;
+    }
+    #component-table th.operation-dev-col,
+    #component-table td.operation-dev-col {
+        width: 8em !important;
+        min-width: 8em !important;
+        max-width: 8em !important;
+    }
+    #component-table th.network-zone-col,
+    #component-table td.network-zone-col {
+        width: 8em !important;
+        min-width: 8em !important;
+        max-width: 8em !important;
+    }
+    #component-table td.server-type-col input[data-field="server_type"],
+    #component-table td.operation-dev-col input[data-field="operation_dev"],
+    #component-table td.network-zone-col input[data-field="network_zone"] {
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box;
+    }
+    #component-table th.platform-type-col,
+    #component-table td.platform-type-col {
+        width: 8em !important;
+        min-width: 8em !important;
+        max-width: 8em !important;
+    }
+    #component-table th.ip-col,
+    #component-table td.ip-col {
+        width: 10em !important;
+        min-width: 10em !important;
+        max-width: 10em !important;
+    }
+    #component-table th.port-col,
+    #component-table td.port-col {
+        width: 8em !important;
+        min-width: 8em !important;
+        max-width: 8em !important;
+    }
+    #component-table th.location-col,
+    #component-table td.location-col {
+        width: 8em !important;
+        min-width: 8em !important;
+        max-width: 8em !important;
+    }
+    #component-table th.mw-col,
+    #component-table td.mw-col {
+        width: 10em !important;
+        min-width: 10em !important;
+        max-width: 10em !important;
+    }
+    #component-table th.os-dbms-col,
+    #component-table td.os-dbms-col {
+        width: 15em !important;
+        min-width: 15em !important;
+        max-width: 15em !important;
+    }
+    #component-table th.url-db-col,
+    #component-table td.url-db-col {
+        width: 15em !important;
+        min-width: 15em !important;
+        max-width: 15em !important;
+    }
+    #component-table th.ssl-domain-col,
+    #component-table td.ssl-domain-col {
+        width: 10em !important;
+        min-width: 10em !important;
+        max-width: 10em !important;
+    }
+    #component-table th.cert-format-col,
+    #component-table td.cert-format-col {
+        width: 10em !important;
+        min-width: 10em !important;
+        max-width: 10em !important;
+    }
+    #component-table th.remark1-col,
+    #component-table td.remark1-col {
+        width: 10em !important;
+        min-width: 10em !important;
+        max-width: 10em !important;
+    }
+    #component-table th.remark2-col,
+    #component-table td.remark2-col {
+        width: 10em !important;
+        min-width: 10em !important;
+        max-width: 10em !important;
+    }
+    #component-table td.platform-type-col input[data-field="platform_type"],
+    #component-table td.ip-col input[data-field="ip"],
+    #component-table td.port-col input[data-field="port"],
+    #component-table td.location-col input[data-field="location"],
+    #component-table td.mw-col input[data-field="mw"],
+    #component-table td.os-dbms-col input[data-field="os_dbms"],
+    #component-table td.url-db-col input[data-field="url_or_db_name"],
+    #component-table td.ssl-domain-col input[data-field="ssl_domain"],
+    #component-table td.cert-format-col input[data-field="cert_format"],
+    #component-table td.remark1-col input[data-field="remark1"],
+    #component-table td.remark2-col input[data-field="remark2"] {
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box;
+    }
     #component-table .sticky-col {
         position: sticky;
         background: #fff;
@@ -99,20 +205,20 @@
                     <th class="sticky-col mgmt-col">자산관리번호</th>
                     <th class="sticky-col hostname-col">Hostname</th>
                     <th class="sticky-col service-name-col sticky-boundary">서비스명</th>
-                    <th>서버 구분</th>
-                    <th>운영/개발</th>
-                    <th>네트웍 구분</th>
-                    <th>플랫폼 구분</th>
-                    <th>IP</th>
-                    <th>Port</th>
-                    <th>위치</th>
-                    <th>MW</th>
-                    <th>OS/DBMS</th>
-                    <th>URL/DB명</th>
-                    <th>SSL 도메인</th>
-                    <th>인증서 포맷</th>
-                    <th>비고1</th>
-                    <th>비고2</th>
+                    <th class="server-type-col">서버 구분</th>
+                    <th class="operation-dev-col">운영/개발</th>
+                    <th class="network-zone-col">네트웍 구분</th>
+                    <th class="platform-type-col">플랫폼 구분</th>
+                    <th class="ip-col">IP</th>
+                    <th class="port-col">Port</th>
+                    <th class="location-col">위치</th>
+                    <th class="mw-col">MW</th>
+                    <th class="os-dbms-col">OS/DBMS</th>
+                    <th class="url-db-col">URL/DB명</th>
+                    <th class="ssl-domain-col">SSL 도메인</th>
+                    <th class="cert-format-col">인증서 포맷</th>
+                    <th class="remark1-col">비고1</th>
+                    <th class="remark2-col">비고2</th>
                     <th>오류</th>
                 </tr>
             </thead>
@@ -127,20 +233,20 @@
                     </td>
                     <td class="sticky-col hostname-col"><input type="text" data-field="hostname" value="{{ c.hostname }}"></td>
                     <td class="sticky-col service-name-col sticky-boundary"><input type="text" data-field="system_name" list="service-name-list" value="{{ c.system_name }}"></td>
-                    <td><input type="text" data-field="server_type" value="{{ c.server_type }}"></td>
-                    <td><input type="text" data-field="operation_dev" value="{{ c.operation_dev }}"></td>
-                    <td><input type="text" data-field="network_zone" value="{{ c.network_zone }}"></td>
-                    <td><input type="text" data-field="platform_type" value="{{ c.platform_type }}"></td>
-                    <td><input type="text" data-field="ip" value="{{ c.ip }}"></td>
-                    <td><input type="text" data-field="port" value="{{ c.port }}"></td>
-                    <td><input type="text" data-field="location" value="{{ c.location }}"></td>
-                    <td><input type="text" data-field="mw" value="{{ c.mw }}"></td>
-                    <td><input type="text" data-field="os_dbms" value="{{ c.os_dbms }}"></td>
-                    <td><input type="text" data-field="url_or_db_name" value="{{ c.url_or_db_name }}"></td>
-                    <td><input type="text" data-field="ssl_domain" value="{{ c.ssl_domain }}"></td>
-                    <td><input type="text" data-field="cert_format" value="{{ c.cert_format }}"></td>
-                    <td><input type="text" data-field="remark1" value="{{ c.remark1 }}"></td>
-                    <td><input type="text" data-field="remark2" value="{{ c.remark2 }}"></td>
+                    <td class="server-type-col"><input type="text" data-field="server_type" value="{{ c.server_type }}"></td>
+                    <td class="operation-dev-col"><input type="text" data-field="operation_dev" value="{{ c.operation_dev }}"></td>
+                    <td class="network-zone-col"><input type="text" data-field="network_zone" value="{{ c.network_zone }}"></td>
+                    <td class="platform-type-col"><input type="text" data-field="platform_type" value="{{ c.platform_type }}"></td>
+                    <td class="ip-col"><input type="text" data-field="ip" value="{{ c.ip }}"></td>
+                    <td class="port-col"><input type="text" data-field="port" value="{{ c.port }}"></td>
+                    <td class="location-col"><input type="text" data-field="location" value="{{ c.location }}"></td>
+                    <td class="mw-col"><input type="text" data-field="mw" value="{{ c.mw }}"></td>
+                    <td class="os-dbms-col"><input type="text" data-field="os_dbms" value="{{ c.os_dbms }}"></td>
+                    <td class="url-db-col"><input type="text" data-field="url_or_db_name" value="{{ c.url_or_db_name }}"></td>
+                    <td class="ssl-domain-col"><input type="text" data-field="ssl_domain" value="{{ c.ssl_domain }}"></td>
+                    <td class="cert-format-col"><input type="text" data-field="cert_format" value="{{ c.cert_format }}"></td>
+                    <td class="remark1-col"><input type="text" data-field="remark1" value="{{ c.remark1 }}"></td>
+                    <td class="remark2-col"><input type="text" data-field="remark2" value="{{ c.remark2 }}"></td>
                     <td style="color:#b10000;">{{ row_errors|lookup:c.id }}</td>
                 </tr>
                 {% empty %}
