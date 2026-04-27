@@ -181,6 +181,7 @@
             <li><a href="{% url 'web:asset_list' %}" class="{% if request.resolver_match.url_name == 'asset_list' %}active{% endif %}">시스템 통합정보</a></li>
             <li><a href="{% url 'web:service_master_list' %}" class="{% if request.resolver_match.url_name == 'service_master_list' %}active{% endif %}">서비스 마스터</a></li>
             <li><a href="{% url 'web:component_master_list' %}" class="{% if request.resolver_match.url_name == 'component_master_list' %}active{% endif %}">자산 마스터</a></li>
+            <li><a href="{% url 'web:component_item_master_list' %}" class="{% if request.resolver_match.url_name == 'component_item_master_list' %}active{% endif %}">컴포넌트 마스터</a></li>
             <li><a href="{% url 'web:person_master_list' %}" class="{% if request.resolver_match.url_name == 'person_master_list' %}active{% endif %}">담당자 마스터</a></li>
             <li><a href="/admin/" class="{% if '/admin/' in request.path %}active{% endif %}">Admin</a></li>
         </ul>

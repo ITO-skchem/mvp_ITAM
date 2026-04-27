@@ -11,5 +11,6 @@ urlpatterns = [
     path("masters/services/", views.service_master_list, name="service_master_list"),
     path("masters/persons/", views.person_master_list, name="person_master_list"),
     path("masters/components/", views.component_master_list, name="component_master_list"),
+    path("masters/component-items/", views.component_item_master_list, name="component_item_master_list"),
     path("ai/search/", views.ai_asset_search, name="ai_asset_search"),
 ]

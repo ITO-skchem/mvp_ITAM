@@ -42,115 +42,77 @@
         min-width: var(--w-service);
         max-width: var(--w-service);
     }
-    #component-table td.service-name-col input[data-field="system_name"] {
-        width: 100%;
-        max-width: 100%;
-        box-sizing: border-box;
-    }
     #component-table th.server-type-col,
     #component-table td.server-type-col {
-        width: 8em !important;
-        min-width: 8em !important;
-        max-width: 8em !important;
+        width: 8em;
+        min-width: 8em;
+        max-width: 8em;
     }
     #component-table th.operation-dev-col,
     #component-table td.operation-dev-col {
-        width: 8em !important;
-        min-width: 8em !important;
-        max-width: 8em !important;
+        width: 8em;
+        min-width: 8em;
+        max-width: 8em;
     }
     #component-table th.network-zone-col,
     #component-table td.network-zone-col {
-        width: 8em !important;
-        min-width: 8em !important;
-        max-width: 8em !important;
-    }
-    #component-table td.server-type-col input[data-field="server_type"],
-    #component-table td.operation-dev-col input[data-field="operation_dev"],
-    #component-table td.network-zone-col input[data-field="network_zone"] {
-        width: 100% !important;
-        max-width: 100% !important;
-        box-sizing: border-box;
+        width: 8em;
+        min-width: 8em;
+        max-width: 8em;
     }
     #component-table th.platform-type-col,
     #component-table td.platform-type-col {
-        width: 8em !important;
-        min-width: 8em !important;
-        max-width: 8em !important;
-    }
-    #component-table th.ip-col,
-    #component-table td.ip-col {
-        width: 10em !important;
-        min-width: 10em !important;
-        max-width: 10em !important;
-    }
-    #component-table th.port-col,
-    #component-table td.port-col {
-        width: 8em !important;
-        min-width: 8em !important;
-        max-width: 8em !important;
+        width: 10em;
+        min-width: 10em;
+        max-width: 10em;
     }
     #component-table th.location-col,
     #component-table td.location-col {
-        width: 8em !important;
-        min-width: 8em !important;
-        max-width: 8em !important;
+        width: 5em;
+        min-width: 5em;
+        max-width: 5em;
     }
-    #component-table th.mw-col,
-    #component-table td.mw-col {
-        width: 10em !important;
-        min-width: 10em !important;
-        max-width: 10em !important;
+    #component-table th.ip-col,
+    #component-table td.ip-col {
+        width: 12em;
+        min-width: 12em;
+        max-width: 12em;
     }
-    #component-table th.os-dbms-col,
-    #component-table td.os-dbms-col {
-        width: 15em !important;
-        min-width: 15em !important;
-        max-width: 15em !important;
+    #component-table th.port-col,
+    #component-table td.port-col {
+        width: 8em;
+        min-width: 8em;
+        max-width: 8em;
     }
-    #component-table th.url-db-col,
-    #component-table td.url-db-col {
-        width: 15em !important;
-        min-width: 15em !important;
-        max-width: 15em !important;
+    #component-table th.language-col,
+    #component-table td.language-col,
+    #component-table th.framework-col,
+    #component-table td.framework-col,
+    #component-table th.os-col,
+    #component-table td.os-col,
+    #component-table th.db-col,
+    #component-table td.db-col,
+    #component-table th.middleware-col,
+    #component-table td.middleware-col {
+        width: 15em;
+        min-width: 15em;
+        max-width: 15em;
     }
     #component-table th.ssl-domain-col,
     #component-table td.ssl-domain-col {
-        width: 10em !important;
-        min-width: 10em !important;
-        max-width: 10em !important;
+        width: 12em;
+        min-width: 12em;
+        max-width: 12em;
     }
     #component-table th.cert-format-col,
     #component-table td.cert-format-col {
-        width: 10em !important;
-        min-width: 10em !important;
-        max-width: 10em !important;
+        width: 8em;
+        min-width: 8em;
+        max-width: 8em;
     }
-    #component-table th.remark1-col,
-    #component-table td.remark1-col {
-        width: 10em !important;
-        min-width: 10em !important;
-        max-width: 10em !important;
-    }
-    #component-table th.remark2-col,
-    #component-table td.remark2-col {
-        width: 10em !important;
-        min-width: 10em !important;
-        max-width: 10em !important;
-    }
-    #component-table td.platform-type-col input[data-field="platform_type"],
-    #component-table td.ip-col input[data-field="ip"],
-    #component-table td.port-col input[data-field="port"],
-    #component-table td.location-col input[data-field="location"],
-    #component-table td.mw-col input[data-field="mw"],
-    #component-table td.os-dbms-col input[data-field="os_dbms"],
-    #component-table td.url-db-col input[data-field="url_or_db_name"],
-    #component-table td.ssl-domain-col input[data-field="ssl_domain"],
-    #component-table td.cert-format-col input[data-field="cert_format"],
-    #component-table td.remark1-col input[data-field="remark1"],
-    #component-table td.remark2-col input[data-field="remark2"] {
-        width: 100% !important;
-        max-width: 100% !important;
+    #component-table td.service-name-col input[data-field="system_name"] {
+        width: 100%;
+        max-width: 100%;
         box-sizing: border-box;
     }
     #component-table .sticky-col {
@@ -192,6 +154,36 @@
     <option value="{{ svc_name }}"></option>
     {% endfor %}
 </datalist>
+<datalist id="svr-type-code-list">
+    {% for server_type_code in svr_type_codes %}
+    <option value="{{ server_type_code }}"></option>
+    {% endfor %}
+</datalist>
+<datalist id="svr-type-code-list-filtered"></datalist>
+<datalist id="devops-code-list">
+    {% for devops_code in devops_codes %}
+    <option value="{{ devops_code }}"></option>
+    {% endfor %}
+</datalist>
+<datalist id="devops-code-list-filtered"></datalist>
+<datalist id="infra-type-code-list">
+    {% for infra_type_code in infra_type_codes %}
+    <option value="{{ infra_type_code }}"></option>
+    {% endfor %}
+</datalist>
+<datalist id="infra-type-code-list-filtered"></datalist>
+<datalist id="infra-loc-code-list">
+    {% for infra_loc_code in infra_loc_codes %}
+    <option value="{{ infra_loc_code }}"></option>
+    {% endfor %}
+</datalist>
+<datalist id="infra-loc-code-list-filtered"></datalist>
+<datalist id="network-zone-code-list">
+    {% for network_zone_code in network_zone_codes %}
+    <option value="{{ network_zone_code }}"></option>
+    {% endfor %}
+</datalist>
+<datalist id="network-zone-code-list-filtered"></datalist>
 <form id="component-form" class="list-form" method="post" enctype="multipart/form-data">
     {% csrf_token %}
     <input type="hidden" name="action" id="component-action" value="save">
@@ -207,18 +199,21 @@
                     <th class="sticky-col service-name-col sticky-boundary">서비스명</th>
                     <th class="server-type-col">서버 구분</th>
                     <th class="operation-dev-col">운영/개발</th>
+                    <th class="platform-type-col">인프라 구분</th>
+                    <th class="location-col">위치</th>
                     <th class="network-zone-col">네트웍 구분</th>
-                    <th class="platform-type-col">플랫폼 구분</th>
                     <th class="ip-col">IP</th>
                     <th class="port-col">Port</th>
-                    <th class="location-col">위치</th>
-                    <th class="mw-col">MW</th>
-                    <th class="os-dbms-col">OS/DBMS</th>
-                    <th class="url-db-col">URL/DB명</th>
+                    <th class="language-col">Language</th>
+                    <th class="framework-col">Framework</th>
+                    <th class="os-col">OS</th>
+                    <th class="db-col">DB</th>
+                    <th class="middleware-col">Middleware</th>
+                    <th>URL/DB명</th>
                     <th class="ssl-domain-col">SSL 도메인</th>
                     <th class="cert-format-col">인증서 포맷</th>
-                    <th class="remark1-col">비고1</th>
-                    <th class="remark2-col">비고2</th>
+                    <th>비고1</th>
+                    <th>비고2</th>
                     <th>오류</th>
                 </tr>
             </thead>
@@ -233,24 +228,27 @@
                     </td>
                     <td class="sticky-col hostname-col"><input type="text" data-field="hostname" value="{{ c.hostname }}"></td>
                     <td class="sticky-col service-name-col sticky-boundary"><input type="text" data-field="system_name" list="service-name-list" value="{{ c.system_name }}"></td>
-                    <td class="server-type-col"><input type="text" data-field="server_type" value="{{ c.server_type }}"></td>
-                    <td class="operation-dev-col"><input type="text" data-field="operation_dev" value="{{ c.operation_dev }}"></td>
-                    <td class="network-zone-col"><input type="text" data-field="network_zone" value="{{ c.network_zone }}"></td>
-                    <td class="platform-type-col"><input type="text" data-field="platform_type" value="{{ c.platform_type }}"></td>
+                    <td class="server-type-col"><input type="text" data-field="server_type" list="svr-type-code-list-filtered" value="{{ c.server_type }}"></td>
+                    <td class="operation-dev-col"><input type="text" data-field="operation_dev" list="devops-code-list-filtered" value="{{ c.operation_dev }}"></td>
+                    <td class="platform-type-col"><input type="text" data-field="platform_type" list="infra-type-code-list-filtered" value="{{ c.platform_type }}"></td>
+                    <td class="location-col"><input type="text" data-field="location" list="infra-loc-code-list-filtered" value="{{ c.location }}"></td>
+                    <td class="network-zone-col"><input type="text" data-field="network_zone" list="network-zone-code-list-filtered" value="{{ c.network_zone }}"></td>
                     <td class="ip-col"><input type="text" data-field="ip" value="{{ c.ip }}"></td>
                     <td class="port-col"><input type="text" data-field="port" value="{{ c.port }}"></td>
-                    <td class="location-col"><input type="text" data-field="location" value="{{ c.location }}"></td>
-                    <td class="mw-col"><input type="text" data-field="mw" value="{{ c.mw }}"></td>
-                    <td class="os-dbms-col"><input type="text" data-field="os_dbms" value="{{ c.os_dbms }}"></td>
-                    <td class="url-db-col"><input type="text" data-field="url_or_db_name" value="{{ c.url_or_db_name }}"></td>
+                    <td class="language-col"><input type="text" data-field="mw" value="{{ c.mw }}"></td>
+                    <td class="framework-col"><input type="text" data-field="os_dbms" value="{{ c.os_dbms }}"></td>
+                    <td class="os-col"><input type="text" data-field="os" value="{{ c.os }}"></td>
+                    <td class="db-col"><input type="text" data-field="db" value="{{ c.db }}"></td>
+                    <td class="middleware-col"><input type="text" data-field="middleware" value="{{ c.middleware }}"></td>
+                    <td><input type="text" data-field="url_or_db_name" value="{{ c.url_or_db_name }}"></td>
                     <td class="ssl-domain-col"><input type="text" data-field="ssl_domain" value="{{ c.ssl_domain }}"></td>
                     <td class="cert-format-col"><input type="text" data-field="cert_format" value="{{ c.cert_format }}"></td>
-                    <td class="remark1-col"><input type="text" data-field="remark1" value="{{ c.remark1 }}"></td>
-                    <td class="remark2-col"><input type="text" data-field="remark2" value="{{ c.remark2 }}"></td>
+                    <td><input type="text" data-field="remark1" value="{{ c.remark1 }}"></td>
+                    <td><input type="text" data-field="remark2" value="{{ c.remark2 }}"></td>
                     <td style="color:#b10000;">{{ row_errors|lookup:c.id }}</td>
                 </tr>
                 {% empty %}
-                <tr><td colspan="19">등록된 자산 마스터가 없습니다.</td></tr>
+                <tr><td colspan="22">등록된 자산 마스터가 없습니다.</td></tr>
                 {% endfor %}
             </tbody>
         </table>
@@ -285,6 +283,13 @@
     const rowsInput = document.getElementById("component-rows-json");
     const deletedInput = document.getElementById("component-deleted-ids-json");
     const deletedIds = [];
+    const svrTypeCodes = [{% for server_type_code in svr_type_codes %}"{{ server_type_code|escapejs }}"{% if not forloop.last %}, {% endif %}{% endfor %}];
+    const devopsCodes = [{% for devops_code in devops_codes %}"{{ devops_code|escapejs }}"{% if not forloop.last %}, {% endif %}{% endfor %}];
+    const infraTypeCodes = [{% for infra_type_code in infra_type_codes %}"{{ infra_type_code|escapejs }}"{% if not forloop.last %}, {% endif %}{% endfor %}];
+    const infraLocCodes = [{% for infra_loc_code in infra_loc_codes %}"{{ infra_loc_code|escapejs }}"{% if not forloop.last %}, {% endif %}{% endfor %}];
+    const networkZoneCodes = [{% for network_zone_code in network_zone_codes %}"{{ network_zone_code|escapejs }}"{% if not forloop.last %}, {% endif %}{% endfor %}];
+    const AWS_CODE = "AWS";
+    let isComposing = false;
     const usedKeys = new Set(
         [...table.querySelectorAll('input[data-field="asset_mgmt_no"]')]
             .map((el) => el.value)
@@ -334,12 +339,321 @@
         const rowCheck = tr.querySelector(".row-check");
         if (rowCheck) rowCheck.checked = true;
     };
+    const autoSetServerTypeByHostname = (hostnameInput) => {
+        const tr = hostnameInput.closest("tr");
+        if (!tr) return;
+        const serverTypeInput = tr.querySelector('input[data-field="server_type"]');
+        if (!serverTypeInput) return;
+        const upper = String(hostnameInput.value || "").toUpperCase();
+        let next = "";
+        if (upper.includes("-AP")) next = "WAS";
+        else if (upper.includes("-WEB")) next = "WEB";
+        if (!next || serverTypeInput.value === next) return;
+        serverTypeInput.value = next;
+        updateServerTypeDatalist(next);
+        markChecked(serverTypeInput);
+    };
+    const findServerTypeMatch = (keyword) => {
+        const lower = keyword.toLowerCase();
+        return svrTypeCodes.find((code) => code.toLowerCase().startsWith(lower)) || "";
+    };
+    const findOperationDevMatch = (keyword) => {
+        const lower = keyword.toLowerCase();
+        return devopsCodes.find((code) => code.toLowerCase().startsWith(lower)) || "";
+    };
+    const findInfraTypeMatch = (keyword) => {
+        const lower = keyword.toLowerCase();
+        return infraTypeCodes.find((code) => code.toLowerCase().startsWith(lower)) || "";
+    };
+    const findLocationMatch = (source, keyword) => {
+        const lower = keyword.toLowerCase();
+        return source.find((code) => code.toLowerCase().startsWith(lower)) || "";
+    };
+    const findNetworkZoneMatch = (keyword) => {
+        const lower = keyword.toLowerCase();
+        return networkZoneCodes.find((code) => code.toLowerCase().startsWith(lower)) || "";
+    };
+    const getLocationSource = (target) => {
+        const tr = target.closest("tr");
+        const platformInput = tr?.querySelector('input[data-field="platform_type"]');
+        const platformType = (platformInput?.value || "").trim();
+        if (platformType === AWS_CODE) return [AWS_CODE];
+        return infraLocCodes.filter((code) => code !== AWS_CODE);
+    };
+    const lockLocationByPlatformType = (target) => {
+        const tr = target.closest("tr");
+        if (!tr) return;
+        const locationInput = tr.querySelector('input[data-field="location"]');
+        if (!locationInput) return;
+        const platformType = (target.value || "").trim();
+        if (platformType === AWS_CODE) {
+            locationInput.value = AWS_CODE;
+            locationInput.readOnly = true;
+            markChecked(locationInput);
+            return;
+        }
+        locationInput.readOnly = false;
+        if (locationInput.value === AWS_CODE) {
+            locationInput.value = "";
+            markChecked(locationInput);
+        }
+    };
+    const updateServerTypeDatalist = (keyword) => {
+        const datalist = document.getElementById("svr-type-code-list-filtered");
+        if (!datalist) return;
+        const lower = (keyword || "").toLowerCase();
+        const matches = lower ? svrTypeCodes.filter((code) => code.toLowerCase().startsWith(lower)) : svrTypeCodes;
+        datalist.innerHTML = matches.map((code) => `<option value="${code}"></option>`).join("");
+    };
+    const updateOperationDevDatalist = (keyword) => {
+        const datalist = document.getElementById("devops-code-list-filtered");
+        if (!datalist) return;
+        const lower = (keyword || "").toLowerCase();
+        const matches = lower ? devopsCodes.filter((code) => code.toLowerCase().startsWith(lower)) : devopsCodes;
+        datalist.innerHTML = matches.map((code) => `<option value="${code}"></option>`).join("");
+    };
+    const updateInfraTypeDatalist = (keyword) => {
+        const datalist = document.getElementById("infra-type-code-list-filtered");
+        if (!datalist) return;
+        const lower = (keyword || "").toLowerCase();
+        const matches = lower ? infraTypeCodes.filter((code) => code.toLowerCase().startsWith(lower)) : infraTypeCodes;
+        datalist.innerHTML = matches.map((code) => `<option value="${code}"></option>`).join("");
+    };
+    const updateLocationDatalist = (target, keyword) => {
+        const datalist = document.getElementById("infra-loc-code-list-filtered");
+        if (!datalist) return;
+        const source = getLocationSource(target);
+        const lower = (keyword || "").toLowerCase();
+        const matches = lower ? source.filter((code) => code.toLowerCase().startsWith(lower)) : source;
+        datalist.innerHTML = matches.map((code) => `<option value="${code}"></option>`).join("");
+    };
+    const updateNetworkZoneDatalist = (keyword) => {
+        const datalist = document.getElementById("network-zone-code-list-filtered");
+        if (!datalist) return;
+        const lower = (keyword || "").toLowerCase();
+        const matches = lower ? networkZoneCodes.filter((code) => code.toLowerCase().startsWith(lower)) : networkZoneCodes;
+        datalist.innerHTML = matches.map((code) => `<option value="${code}"></option>`).join("");
+    };
+    const showServerTypeSuggestion = (target) => {
+        if (isComposing) return false;
+        const keyword = target.value || "";
+        updateServerTypeDatalist(keyword);
+        if (!keyword) return false;
+        const matchedCode = findServerTypeMatch(keyword);
+        if (!matchedCode) return false;
+        if (target.setSelectionRange && target === document.activeElement) {
+            target.value = matchedCode;
+            target.setSelectionRange(keyword.length, matchedCode.length);
+        }
+        return true;
+    };
+    const commitServerTypeSuggestion = (target) => {
+        if (isComposing) return false;
+        const typed = (target.value || "").trim();
+        if (!typed) return false;
+        const matchedCode = findServerTypeMatch(typed);
+        if (!matchedCode) return false;
+        if (target.value !== matchedCode) {
+            target.value = matchedCode;
+            markChecked(target);
+            return true;
+        }
+        return false;
+    };
+    const showOperationDevSuggestion = (target) => {
+        if (isComposing) return false;
+        const keyword = target.value || "";
+        updateOperationDevDatalist(keyword);
+        if (!keyword) return false;
+        const matchedCode = findOperationDevMatch(keyword);
+        if (!matchedCode) return false;
+        if (target.setSelectionRange && target === document.activeElement) {
+            target.value = matchedCode;
+            target.setSelectionRange(keyword.length, matchedCode.length);
+        }
+        return true;
+    };
+    const commitOperationDevSuggestion = (target) => {
+        if (isComposing) return false;
+        const typed = (target.value || "").trim();
+        if (!typed) return false;
+        const matchedCode = findOperationDevMatch(typed);
+        if (!matchedCode) return false;
+        if (target.value !== matchedCode) {
+            target.value = matchedCode;
+            markChecked(target);
+            return true;
+        }
+        return false;
+    };
+    const showInfraTypeSuggestion = (target) => {
+        if (isComposing) return false;
+        const keyword = target.value || "";
+        updateInfraTypeDatalist(keyword);
+        if (!keyword) return false;
+        const matchedCode = findInfraTypeMatch(keyword);
+        if (!matchedCode) return false;
+        if (target.setSelectionRange && target === document.activeElement) {
+            target.value = matchedCode;
+            target.setSelectionRange(keyword.length, matchedCode.length);
+        }
+        return true;
+    };
+    const commitInfraTypeSuggestion = (target) => {
+        if (isComposing) return false;
+        const typed = (target.value || "").trim();
+        if (!typed) return false;
+        const matchedCode = findInfraTypeMatch(typed);
+        if (!matchedCode) return false;
+        if (target.value !== matchedCode) {
+            target.value = matchedCode;
+            markChecked(target);
+            lockLocationByPlatformType(target);
+            return true;
+        }
+        lockLocationByPlatformType(target);
+        return false;
+    };
+    const showLocationSuggestion = (target) => {
+        if (isComposing) return false;
+        const keyword = target.value || "";
+        updateLocationDatalist(target, keyword);
+        if (!keyword) return false;
+        const matchedCode = findLocationMatch(getLocationSource(target), keyword);
+        if (!matchedCode) return false;
+        if (target.setSelectionRange && target === document.activeElement) {
+            target.value = matchedCode;
+            target.setSelectionRange(keyword.length, matchedCode.length);
+        }
+        return true;
+    };
+    const commitLocationSuggestion = (target) => {
+        if (isComposing) return false;
+        if (target.readOnly) {
+            if (target.value !== AWS_CODE) {
+                target.value = AWS_CODE;
+                markChecked(target);
+                return true;
+            }
+            return false;
+        }
+        const typed = (target.value || "").trim();
+        if (!typed) return false;
+        const matchedCode = findLocationMatch(getLocationSource(target), typed);
+        if (!matchedCode) return false;
+        if (target.value !== matchedCode) {
+            target.value = matchedCode;
+            markChecked(target);
+            return true;
+        }
+        return false;
+    };
+    const showNetworkZoneSuggestion = (target) => {
+        if (isComposing) return false;
+        const keyword = target.value || "";
+        updateNetworkZoneDatalist(keyword);
+        if (!keyword) return false;
+        const matchedCode = findNetworkZoneMatch(keyword);
+        if (!matchedCode) return false;
+        if (target.setSelectionRange && target === document.activeElement) {
+            target.value = matchedCode;
+            target.setSelectionRange(keyword.length, matchedCode.length);
+        }
+        return true;
+    };
+    const commitNetworkZoneSuggestion = (target) => {
+        if (isComposing) return false;
+        const typed = (target.value || "").trim();
+        if (!typed) return false;
+        const matchedCode = findNetworkZoneMatch(typed);
+        if (!matchedCode) return false;
+        if (target.value !== matchedCode) {
+            target.value = matchedCode;
+            markChecked(target);
+            return true;
+        }
+        return false;
+    };
 
     table.addEventListener("input", (e) => {
-        if (e.target.matches("[data-field]")) markChecked(e.target);
+        if (!e.target.matches("[data-field]")) return;
+        if (e.target.dataset.field === "hostname") {
+            autoSetServerTypeByHostname(e.target);
+            markChecked(e.target);
+            return;
+        }
+        if (e.target.dataset.field === "server_type") {
+            if ((e.inputType || "").startsWith("delete")) {
+                updateServerTypeDatalist(e.target.value || "");
+                return;
+            }
+            showServerTypeSuggestion(e.target);
+            return;
+        }
+        if (e.target.dataset.field === "operation_dev") {
+            if ((e.inputType || "").startsWith("delete")) {
+                updateOperationDevDatalist(e.target.value || "");
+                return;
+            }
+            showOperationDevSuggestion(e.target);
+            return;
+        }
+        if (e.target.dataset.field === "platform_type") {
+            if ((e.inputType || "").startsWith("delete")) {
+                updateInfraTypeDatalist(e.target.value || "");
+                lockLocationByPlatformType(e.target);
+                return;
+            }
+            showInfraTypeSuggestion(e.target);
+            lockLocationByPlatformType(e.target);
+            return;
+        }
+        if (e.target.dataset.field === "location") {
+            if ((e.inputType || "").startsWith("delete")) {
+                updateLocationDatalist(e.target, e.target.value || "");
+                return;
+            }
+            showLocationSuggestion(e.target);
+            return;
+        }
+        if (e.target.dataset.field === "network_zone") {
+            if ((e.inputType || "").startsWith("delete")) {
+                updateNetworkZoneDatalist(e.target.value || "");
+                return;
+            }
+            showNetworkZoneSuggestion(e.target);
+            return;
+        }
+        markChecked(e.target);
     });
     table.addEventListener("change", (e) => {
         if (e.target.matches("[data-field]")) markChecked(e.target);
+    });
+    table.addEventListener("compositionstart", (e) => {
+        if (!["server_type", "operation_dev", "platform_type", "location", "network_zone"].includes(e.target.dataset.field)) return;
+        isComposing = true;
+    });
+    table.addEventListener("compositionend", (e) => {
+        if (!["server_type", "operation_dev", "platform_type", "location", "network_zone"].includes(e.target.dataset.field)) return;
+        isComposing = false;
+        if (e.target.dataset.field === "server_type") {
+            showServerTypeSuggestion(e.target);
+            return;
+        }
+        if (e.target.dataset.field === "operation_dev") {
+            showOperationDevSuggestion(e.target);
+            return;
+        }
+        if (e.target.dataset.field === "platform_type") {
+            showInfraTypeSuggestion(e.target);
+            lockLocationByPlatformType(e.target);
+            return;
+        }
+        if (e.target.dataset.field === "location") {
+            showLocationSuggestion(e.target);
+            return;
+        }
+        showNetworkZoneSuggestion(e.target);
     });
 
     document.getElementById("component-add-btn").addEventListener("click", () => {
@@ -361,17 +675,83 @@
 
     const serviceNames = [{% for svc_name in service_names %}"{{ svc_name|escapejs }}"{% if not forloop.last %}, {% endif %}{% endfor %}];
     table.addEventListener("keydown", (e) => {
-        if (e.key !== "Enter") return;
-        if (e.target.dataset.field !== "system_name") return;
-        const keyword = (e.target.value || "").trim().toLowerCase();
-        if (!keyword) return;
-        const matches = serviceNames.filter((n) => n.toLowerCase().includes(keyword));
-        if (matches.length === 1) {
-            e.preventDefault();
-            e.target.value = matches[0];
-            markChecked(e.target);
+        if (e.target.dataset.field === "server_type") {
+            if (e.key === "Enter") {
+                if (commitServerTypeSuggestion(e.target)) e.preventDefault();
+                return;
+            }
+            if (e.key === "Tab") commitServerTypeSuggestion(e.target);
+            return;
+        }
+        if (e.target.dataset.field === "operation_dev") {
+            if (e.key === "Enter") {
+                if (commitOperationDevSuggestion(e.target)) e.preventDefault();
+                return;
+            }
+            if (e.key === "Tab") commitOperationDevSuggestion(e.target);
+            return;
+        }
+        if (e.target.dataset.field === "platform_type") {
+            if (e.key === "Enter") {
+                if (commitInfraTypeSuggestion(e.target)) e.preventDefault();
+                return;
+            }
+            if (e.key === "Tab") commitInfraTypeSuggestion(e.target);
+            return;
+        }
+        if (e.target.dataset.field === "location") {
+            if (e.key === "Enter") {
+                if (commitLocationSuggestion(e.target)) e.preventDefault();
+                return;
+            }
+            if (e.key === "Tab") commitLocationSuggestion(e.target);
+            return;
+        }
+        if (e.target.dataset.field === "network_zone") {
+            if (e.key === "Enter") {
+                if (commitNetworkZoneSuggestion(e.target)) e.preventDefault();
+                return;
+            }
+            if (e.key === "Tab") commitNetworkZoneSuggestion(e.target);
+            return;
+        }
+        if (e.key === "Enter" && e.target.dataset.field === "system_name") {
+            const keyword = (e.target.value || "").trim().toLowerCase();
+            if (!keyword) return;
+            const matches = serviceNames.filter((n) => n.toLowerCase().includes(keyword));
+            if (matches.length === 1) {
+                e.preventDefault();
+                e.target.value = matches[0];
+                markChecked(e.target);
+            }
         }
     });
+    table.addEventListener("blur", (e) => {
+        if (e.target.dataset.field === "server_type") {
+            commitServerTypeSuggestion(e.target);
+            return;
+        }
+        if (e.target.dataset.field === "operation_dev") {
+            commitOperationDevSuggestion(e.target);
+            return;
+        }
+        if (e.target.dataset.field === "platform_type") {
+            commitInfraTypeSuggestion(e.target);
+            return;
+        }
+        if (e.target.dataset.field === "location") {
+            commitLocationSuggestion(e.target);
+            return;
+        }
+        if (e.target.dataset.field === "network_zone") {
+            commitNetworkZoneSuggestion(e.target);
+        }
+    }, true);
+    updateServerTypeDatalist("");
+    updateOperationDevDatalist("");
+    updateInfraTypeDatalist("");
+    table.querySelectorAll('input[data-field="platform_type"]').forEach((el) => lockLocationByPlatformType(el));
+    updateNetworkZoneDatalist("");
 
     document.getElementById("component-save-btn").addEventListener("click", () => {
         const rows = [...table.querySelectorAll("tbody tr")]

@@ -22,10 +22,6 @@ class ServiceMaster(models.Model):
     owner_person = models.CharField("담당자", max_length=100, blank=True)
     opened_at = models.DateField("서비스 오픈일", null=True, blank=True)
     build_type = models.CharField("구축 구분", max_length=100, blank=True)
-    dev_language = models.CharField("개발 언어", max_length=100, blank=True)
-    dev_framework = models.CharField("개발 F/W", max_length=100, blank=True)
-    cloud_type = models.CharField("Cloud 구분", max_length=100, blank=True)
-    dbms = models.CharField("DBMS", max_length=100, blank=True)
     scm_tool = models.CharField("형상관리", max_length=100, blank=True)
     deploy_tool = models.CharField("배포도구", max_length=100, blank=True)
     monitoring_tool = models.CharField("모니터링도구", max_length=100, blank=True)
@@ -113,13 +109,16 @@ class Component(models.Model):
     system_name = models.CharField("시스템명", max_length=200, blank=True)
     server_type = models.CharField("서버 구분", max_length=100, blank=True)
     operation_dev = models.CharField("운영/개발", max_length=50, blank=True)
-    network_zone = models.CharField("네트웍 구분", max_length=100, blank=True)
     platform_type = models.CharField("플랫폼 구분", max_length=100, blank=True)
+    location = models.CharField("위치", max_length=100, blank=True)
+    network_zone = models.CharField("네트웍 구분", max_length=100, blank=True)
     ip = models.GenericIPAddressField("IP", null=True, blank=True)
     port = models.CharField("Port", max_length=20, blank=True)
-    location = models.CharField("위치", max_length=100, blank=True)
     mw = models.CharField("MW", max_length=100, blank=True)
     os_dbms = models.CharField("OS/DBMS", max_length=200, blank=True)
+    os = models.CharField("OS", max_length=100, blank=True)
+    db = models.CharField("DB", max_length=100, blank=True)
+    middleware = models.CharField("Middleware", max_length=100, blank=True)
     url_or_db_name = models.CharField("URL/DB명", max_length=300, blank=True)
     ssl_domain = models.CharField("SSL 도메인", max_length=200, blank=True)
     cert_format = models.CharField("인증서 포맷", max_length=100, blank=True)
@@ -147,3 +146,45 @@ class Component(models.Model):
 
     def __str__(self):
         return self.hostname or self.asset_mgmt_no
+
+
+class ComponentMaster(models.Model):
+    component_mgmt_no = models.CharField("컴포넌트번호", max_length=20, unique=True, blank=True, editable=False)
+    hostname = models.CharField("Hostname", max_length=200, blank=True)
+    system_name = models.CharField("시스템명", max_length=200, blank=True)
+    server_type = models.CharField("서버 구분", max_length=100, blank=True)
+    operation_dev = models.CharField("운영/개발", max_length=50, blank=True)
+    platform_type = models.CharField("플랫폼 구분", max_length=100, blank=True)
+    location = models.CharField("위치", max_length=100, blank=True)
+    network_zone = models.CharField("네트웍 구분", max_length=100, blank=True)
+    ip = models.GenericIPAddressField("IP", null=True, blank=True)
+    port = models.CharField("Port", max_length=20, blank=True)
+    mw = models.CharField("MW", max_length=100, blank=True)
+    os_dbms = models.CharField("OS/DBMS", max_length=200, blank=True)
+    url_or_db_name = models.CharField("URL/DB명", max_length=300, blank=True)
+    ssl_domain = models.CharField("SSL 도메인", max_length=200, blank=True)
+    cert_format = models.CharField("인증서 포맷", max_length=100, blank=True)
+    remark1 = models.TextField("비고1", blank=True)
+    remark2 = models.TextField("비고2", blank=True)
+    extra = models.JSONField("추가필드", default=dict, blank=True)
+
+    @classmethod
+    def next_component_mgmt_no(cls):
+        prefix = "cmp"
+        with transaction.atomic():
+            last = (
+                cls.objects.filter(component_mgmt_no__startswith=prefix)
+                .order_by("-component_mgmt_no")
+                .values_list("component_mgmt_no", flat=True)
+                .first()
+            )
+            next_no = int(last[3:]) + 1 if last else 1
+            return f"{prefix}{next_no:04d}"
+
+    def save(self, *args, **kwargs):
+        if not self.component_mgmt_no:
+            self.component_mgmt_no = self.next_component_mgmt_no()
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return self.hostname or self.component_mgmt_no

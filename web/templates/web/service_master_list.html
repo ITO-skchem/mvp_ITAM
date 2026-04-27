@@ -85,14 +85,6 @@
     #service-table td.col-db-owner { --col-w: 8em; }
     #service-table th.col-build-type,
     #service-table td.col-build-type { --col-w: 8em; }
-    #service-table th.col-dev-language,
-    #service-table td.col-dev-language { --col-w: 17em; }
-    #service-table th.col-dev-framework,
-    #service-table td.col-dev-framework { --col-w: 17em; }
-    #service-table th.col-cloud-type,
-    #service-table td.col-cloud-type { --col-w: 8em; }
-    #service-table th.col-dbms,
-    #service-table td.col-dbms { --col-w: 17em; }
     #service-table th.col-scm-tool,
     #service-table td.col-scm-tool { --col-w: 8em; }
     #service-table th.col-deploy-tool,
@@ -178,6 +170,24 @@
     <button type="button" id="service-add-btn">추가</button>
     <button type="button" id="service-delete-btn">삭제</button>
 </form>
+<datalist id="svc-category-code-list">
+    {% for category_code in svc_category_codes %}
+    <option value="{{ category_code }}"></option>
+    {% endfor %}
+</datalist>
+<datalist id="svc-category-code-list-filtered"></datalist>
+<datalist id="opr-division-code-list">
+    {% for operation_code in opr_division_codes %}
+    <option value="{{ operation_code }}"></option>
+    {% endfor %}
+</datalist>
+<datalist id="opr-division-code-list-filtered"></datalist>
+<datalist id="dev-type-code-list">
+    {% for dev_type_code in dev_type_codes %}
+    <option value="{{ dev_type_code }}"></option>
+    {% endfor %}
+</datalist>
+<datalist id="dev-type-code-list-filtered"></datalist>
 <form id="service-form" class="list-form" method="post" enctype="multipart/form-data">
     {% csrf_token %}
     <input type="hidden" name="action" id="service-action" value="save">
@@ -203,10 +213,6 @@
                     <th class="col-w col-db-owner">DB 담당자</th>
                     <th>서비스 오픈일</th>
                     <th class="col-w col-build-type">구축 구분</th>
-                    <th class="col-w col-dev-language">개발 언어</th>
-                    <th class="col-w col-dev-framework">개발 F/W</th>
-                    <th class="col-w col-cloud-type">Cloud 구분</th>
-                    <th class="col-w col-dbms">DBMS</th>
                     <th class="col-w col-scm-tool">형상관리</th>
                     <th class="col-w col-deploy-tool">배포도구</th>
                     <th class="col-w col-monitoring-tool">모니터링도구</th>
@@ -234,9 +240,9 @@
                         <span class="key-display">{{ s.service_mgmt_no }}</span>
                     </td>
                     <td class="sticky-col service-name-col sticky-boundary"><input type="text" data-field="name" value="{{ s.name }}"></td>
-                    <td class="col-w col-system-type"><input type="text" data-field="system_type" value="{{ s.system_type }}"></td>
+                    <td class="col-w col-system-type"><input type="text" data-field="system_type" list="svc-category-code-list-filtered" value="{{ s.system_type }}"></td>
                     <td class="col-w col-description"><input type="text" data-field="description" value="{{ s.description }}"></td>
-                    <td class="col-w col-operation-type"><input type="text" data-field="operation_type" value="{{ s.operation_type }}"></td>
+                    <td class="col-w col-operation-type"><input type="text" data-field="operation_type" list="opr-division-code-list-filtered" value="{{ s.operation_type }}"></td>
                     <td class="col-w col-service-grade"><input type="text" data-field="service_grade" value="{{ s.service_grade }}"></td>
                     <td class="col-w col-service-level"><input type="text" data-field="service_level" value="{{ s.service_level }}"></td>
                     <td class="col-w col-itgc"><input type="checkbox" data-field="itgc" {% if s.itgc %}checked{% endif %}></td>
@@ -246,11 +252,7 @@
                     <td class="col-w col-server-owner"><input type="text" data-field="server_owner" value="{{ s.server_owner }}"></td>
                     <td class="col-w col-db-owner"><input type="text" data-field="db_owner" value="{{ s.db_owner }}"></td>
                     <td><input type="date" data-field="opened_at" value="{{ s.opened_at|date:'Y-m-d' }}"></td>
-                    <td class="col-w col-build-type"><input type="text" data-field="build_type" value="{{ s.build_type }}"></td>
-                    <td class="col-w col-dev-language"><input type="text" data-field="dev_language" value="{{ s.dev_language }}"></td>
-                    <td class="col-w col-dev-framework"><input type="text" data-field="dev_framework" value="{{ s.dev_framework }}"></td>
-                    <td class="col-w col-cloud-type"><input type="text" data-field="cloud_type" value="{{ s.cloud_type }}"></td>
-                    <td class="col-w col-dbms"><input type="text" data-field="dbms" value="{{ s.dbms }}"></td>
+                    <td class="col-w col-build-type"><input type="text" data-field="build_type" list="dev-type-code-list-filtered" value="{{ s.build_type }}"></td>
                     <td class="col-w col-scm-tool"><input type="text" data-field="scm_tool" value="{{ s.scm_tool }}"></td>
                     <td class="col-w col-deploy-tool"><input type="text" data-field="deploy_tool" value="{{ s.deploy_tool }}"></td>
                     <td class="col-w col-monitoring-tool"><input type="text" data-field="monitoring_tool" value="{{ s.monitoring_tool }}"></td>
@@ -268,7 +270,7 @@
                     <td style="color:#b10000;">{{ row_errors|lookup:s.id }}</td>
                 </tr>
                 {% empty %}
-                <tr><td colspan="36">등록된 서비스가 없습니다.</td></tr>
+                <tr><td colspan="32">등록된 서비스가 없습니다.</td></tr>
                 {% endfor %}
             </tbody>
         </table>
@@ -303,6 +305,15 @@
     const rowsInput = document.getElementById("service-rows-json");
     const deletedInput = document.getElementById("service-deleted-ids-json");
     const deletedIds = [];
+    const svcCategoryCodes = [{% for category_code in svc_category_codes %}"{{ category_code|escapejs }}"{% if not forloop.last %}, {% endif %}{% endfor %}];
+    const oprDivisionCodes = [{% for operation_code in opr_division_codes %}"{{ operation_code|escapejs }}"{% if not forloop.last %}, {% endif %}{% endfor %}];
+    const devTypeCodes = [{% for dev_type_code in dev_type_codes %}"{{ dev_type_code|escapejs }}"{% if not forloop.last %}, {% endif %}{% endfor %}];
+    let isComposing = false;
+    const filteredListIds = {
+        system_type: "svc-category-code-list-filtered",
+        operation_type: "opr-division-code-list-filtered",
+        build_type: "dev-type-code-list-filtered",
+    };
     const usedKeys = new Set(
         [...table.querySelectorAll('input[data-field="service_mgmt_no"]')]
             .map((el) => el.value)
@@ -370,13 +381,108 @@
         const rowCheck = tr.querySelector(".row-check");
         if (rowCheck) rowCheck.checked = true;
     };
+    const getAutoCompleteSource = (field) => {
+        if (field === "operation_type") return oprDivisionCodes;
+        if (field === "build_type") return devTypeCodes;
+        return svcCategoryCodes;
+    };
+    const findBestCodeMatch = (source, keyword) => {
+        const lower = keyword.toLowerCase();
+        return source.find((code) => code.toLowerCase().startsWith(lower)) || "";
+    };
+    const updateFilteredDatalist = (field, keyword) => {
+        const listId = filteredListIds[field];
+        if (!listId) return;
+        const datalist = document.getElementById(listId);
+        if (!datalist) return;
+        const source = getAutoCompleteSource(field);
+        const lower = (keyword || "").toLowerCase();
+        const matches = lower ? source.filter((code) => code.toLowerCase().startsWith(lower)) : source;
+        datalist.innerHTML = matches.map((code) => `<option value="${code}"></option>`).join("");
+    };
+    const showCodeSuggestion = (target) => {
+        const field = target?.dataset?.field;
+        if (!["system_type", "operation_type", "build_type"].includes(field)) return false;
+        if (isComposing) return false;
+        const keyword = target.value || "";
+        updateFilteredDatalist(field, keyword);
+        if (!keyword) return false;
+        const source = getAutoCompleteSource(field);
+        const matchedCode = findBestCodeMatch(source, keyword);
+        if (!matchedCode) return false;
+        if (target.setSelectionRange && target === document.activeElement) {
+            target.value = matchedCode;
+            target.setSelectionRange(keyword.length, matchedCode.length);
+        }
+        return true;
+    };
+    const commitCodeSuggestion = (target) => {
+        const field = target?.dataset?.field;
+        if (!["system_type", "operation_type", "build_type"].includes(field)) return false;
+        if (isComposing) return false;
+        const typed = (target.value || "").trim();
+        if (!typed) return false;
+        const source = getAutoCompleteSource(field);
+        const matchedCode = findBestCodeMatch(source, typed);
+        if (!matchedCode) return false;
+        if (target.value !== matchedCode) {
+            target.value = matchedCode;
+            markChecked(target);
+            return true;
+        }
+        return false;
+    };
 
     table.addEventListener("input", (e) => {
-        if (e.target.matches("[data-field]")) markChecked(e.target);
+        if (!e.target.matches("[data-field]")) return;
+        const field = e.target.dataset.field;
+        if (["system_type", "operation_type", "build_type"].includes(field)) {
+            if ((e.inputType || "").startsWith("delete")) {
+                updateFilteredDatalist(field, e.target.value || "");
+                return;
+            }
+            showCodeSuggestion(e.target);
+            return;
+        }
+        markChecked(e.target);
     });
     table.addEventListener("change", (e) => {
         if (e.target.matches("[data-field]")) markChecked(e.target);
     });
+    table.addEventListener("compositionstart", (e) => {
+        if (!e.target.matches('[data-field="system_type"], [data-field="operation_type"], [data-field="build_type"]')) {
+            return;
+        }
+        isComposing = true;
+    });
+    table.addEventListener("compositionend", (e) => {
+        if (!e.target.matches('[data-field="system_type"], [data-field="operation_type"], [data-field="build_type"]')) {
+            return;
+        }
+        isComposing = false;
+        showCodeSuggestion(e.target);
+    });
+    table.addEventListener("keydown", (e) => {
+        if (!["system_type", "operation_type", "build_type"].includes(e.target.dataset.field)) return;
+        if (e.key === "Enter") {
+            if (commitCodeSuggestion(e.target)) {
+                e.preventDefault();
+            }
+            return;
+        }
+        if (e.key === "Tab") {
+            commitCodeSuggestion(e.target);
+        }
+    });
+    table.addEventListener("blur", (e) => {
+        if (!e.target.matches('[data-field="system_type"], [data-field="operation_type"], [data-field="build_type"]')) {
+            return;
+        }
+        if (commitCodeSuggestion(e.target)) {
+            e.preventDefault();
+        }
+    }, true);
+    ["system_type", "operation_type", "build_type"].forEach((field) => updateFilteredDatalist(field, ""));
     document.getElementById("service-add-btn").addEventListener("click", () => {
         const tbody = table.querySelector("tbody");
         const selected = [...tbody.querySelectorAll("tr")].filter((tr) => tr.querySelector(".row-check:checked"));

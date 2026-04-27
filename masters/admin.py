@@ -2,7 +2,7 @@ from django.contrib import admin
 from django import forms
 
 from core.code_choices import get_code_choices
-from .models import Component, PersonMaster, ServiceMaster
+from .models import Component, ComponentMaster, PersonMaster, ServiceMaster
 
 
 class PersonAdminForm(forms.ModelForm):
@@ -24,7 +24,7 @@ class PersonAdminForm(forms.ModelForm):
 class ServiceAdmin(admin.ModelAdmin):
     search_fields = ("name", "system_type", "description", "customer_owner", "appl_owner")
     list_display = ("service_mgmt_no", "name", "system_type", "operation_type", "service_grade", "itgc")
-    list_filter = ("system_type", "operation_type", "itgc", "cloud_type")
+    list_filter = ("system_type", "operation_type", "itgc")
 
 
 @admin.register(PersonMaster)
@@ -39,4 +39,11 @@ class PersonAdmin(admin.ModelAdmin):
 class ComponentAdmin(admin.ModelAdmin):
     search_fields = ("asset_mgmt_no", "hostname", "system_name", "server_type", "platform_type", "ip")
     list_display = ("asset_mgmt_no", "hostname", "system_name", "server_type", "operation_dev", "network_zone", "platform_type", "ip")
+    list_filter = ("server_type", "operation_dev", "network_zone", "platform_type")
+
+
+@admin.register(ComponentMaster)
+class ComponentMasterAdmin(admin.ModelAdmin):
+    search_fields = ("component_mgmt_no", "hostname", "system_name", "server_type", "platform_type", "ip")
+    list_display = ("component_mgmt_no", "hostname", "system_name", "server_type", "operation_dev", "network_zone", "platform_type", "ip")
     list_filter = ("server_type", "operation_dev", "network_zone", "platform_type")
