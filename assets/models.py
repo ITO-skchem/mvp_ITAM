@@ -17,6 +17,8 @@ class InfraAsset(models.Model):
     customer_owner_name = models.CharField("고객사 담당자", max_length=100, blank=True)
     appl_owner_name = models.CharField("Appl. 담당자", max_length=100, blank=True)
     partner_operator_name = models.CharField("Appl. 운영자", max_length=100, blank=True)
+    server_owner_name = models.CharField("서버 담당자", max_length=100, blank=True)
+    db_owner_name = models.CharField("DB 담당자", max_length=100, blank=True)
 
     hostname = models.CharField("Hostname", max_length=200, blank=True)
     server_type = models.CharField("서버 구분", max_length=100, blank=True)

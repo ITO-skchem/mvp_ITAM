@@ -24,16 +24,28 @@ def schedule_rebuild_infra_assets():
     transaction.on_commit(_run)
 
 
-def _sync_service_appl_owner_for_system_names(system_names: set[str]) -> None:
-    """담당자 마스터 기준으로 ServiceMaster.appl_owner(Appl. 운영자) 문자열을 맞춤. update()만 사용해 재귀 시그널 없음."""
-    from assets.infra_sync import build_appl_owner_names
+def sync_service_owner_fields_from_persons(system_names: set[str]) -> None:
+    """담당자 마스터 기준으로 ServiceMaster 담당자 컬럼을 맞춤. update()만 사용해 재귀 시그널 없음."""
+    from assets.infra_sync import build_appl_owner_names, build_person_names_for_role
+
+    role_customer = "고객사 담당자"
+    role_appl = "Appl. 담당자"
+    role_server = "서버 담당자"
+    role_db = "DB 담당자"
 
     for target in system_names:
         t = (target or "").strip()
         if not t:
             continue
-        new_val = build_appl_owner_names(t)
-        ServiceMaster.objects.filter(name=t).update(appl_owner=new_val)
+        ServiceMaster.objects.filter(name=t).update(
+            customer_owner=build_person_names_for_role(t, role_customer),
+            partner_operator=build_person_names_for_role(t, role_appl),
+            server_owner=build_person_names_for_role(t, role_server),
+            db_owner=build_person_names_for_role(t, role_db),
+            appl_owner=build_appl_owner_names(t),
+        )
+    # QuerySet.update는 ServiceMaster post_save를 타지 않으므로 InfraAsset 재계산 예약
+    schedule_rebuild_infra_assets()
 
 
 @receiver(pre_save, sender=PersonMaster)
@@ -54,12 +66,18 @@ def sync_service_appl_owner_after_person_save(sender, instance, **kwargs):
     prev = getattr(instance, "_prev_system_name_for_appl_sync", None)
     if prev:
         targets.add(prev)
-    _sync_service_appl_owner_for_system_names(targets)
+    sync_service_owner_fields_from_persons(targets)
 
 
 @receiver(post_delete, sender=PersonMaster)
 def sync_service_appl_owner_after_person_delete(sender, instance, **kwargs):
-    _sync_service_appl_owner_for_system_names({(instance.system_name or "").strip()})
+    sync_service_owner_fields_from_persons({(instance.system_name or "").strip()})
+
+
+@receiver(post_save, sender=ServiceMaster)
+def sync_service_master_owners_from_persons(sender, instance, **kwargs):
+    """서비스명 저장 시 담당자 마스터와 동기화(역할별·Appl. 운영자). QuerySet.update는 시그널 미발생."""
+    sync_service_owner_fields_from_persons({(instance.name or "").strip()})
 
 
 @receiver(post_save, sender=ServiceMaster)

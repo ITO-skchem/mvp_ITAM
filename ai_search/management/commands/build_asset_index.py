@@ -22,6 +22,7 @@ class Command(BaseCommand):
                 f"HOST:{asset.hostname} IP:{asset.ip or ''} MW:{asset.mw} OS/DBMS:{asset.os_dbms} "
                 f"URL/DB:{asset.url_or_db_name} 위치:{asset.location} "
                 f"담당:고객사:{asset.customer_owner_name} Appl:{asset.appl_owner_name} 운영:{asset.partner_operator_name} "
+                f"서버담당:{asset.server_owner_name} DB담당:{asset.db_owner_name} "
                 f"비고:{asset.remark1} {asset.remark2}"
             )
             items.append((text, {"type": "infra", "id": asset.pk, "name": asset.service_name}))

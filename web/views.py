@@ -12,7 +12,7 @@ from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 
 from ai_search.services import AssetSearchService
-from assets.infra_sync import build_appl_owner_names
+from assets.infra_sync import build_appl_owner_names, build_person_names_for_role
 from assets.models import InfraAsset
 from core.models import AuditLog, Code
 from masters.models import Component, ComponentMaster, PersonMaster, ServiceMaster
@@ -217,12 +217,7 @@ _TEXT_SEARCH_FIELD_TYPES = frozenset(
 )
 
 
-def build_model_text_search_q(model_class, query):
-    """리스트 검색: 모델의 문자열 계열 컬럼 전부에 대해 OR(icontains) 조건을 만든다."""
-    text = (query or "").strip()
-    if not text:
-        return Q()
-    combined = Q()
+def _iter_model_text_search_fields(model_class):
     for field in model_class._meta.get_fields():
         if not getattr(field, "concrete", True):
             continue
@@ -232,6 +227,40 @@ def build_model_text_search_q(model_class, query):
             continue
         if field.get_internal_type() not in _TEXT_SEARCH_FIELD_TYPES:
             continue
+        yield field
+
+
+def _field_column_title(field):
+    vn = getattr(field, "verbose_name", None)
+    if vn and str(vn).strip():
+        return str(vn).strip()
+    return str(field.name).replace("_", " ")
+
+
+def build_model_text_search_q(model_class, query):
+    """리스트 검색: 모델의 문자열 계열 컬럼 전부에 대해 OR(icontains).
+
+    ``컬럼힌트:값`` 형태면 ``컬럼힌트``가 verbose_name(컬럼 제목)에 포함되는 컬럼만
+    ``값``으로 icontains 검색한다. 매칭 컬럼이 없으면 전체 문자열로 기존처럼 검색한다.
+    """
+    text = (query or "").strip()
+    if not text:
+        return Q()
+    if ":" in text:
+        left, _, right_rest = text.partition(":")
+        left = left.strip()
+        right = right_rest.strip()
+        if left and right:
+            needle = left.casefold()
+            narrowed = Q()
+            for field in _iter_model_text_search_fields(model_class):
+                title = _field_column_title(field).casefold()
+                if needle in title:
+                    narrowed |= Q(**{f"{field.attname}__icontains": right})
+            if narrowed:
+                return narrowed
+    combined = Q()
+    for field in _iter_model_text_search_fields(model_class):
         combined |= Q(**{f"{field.attname}__icontains": text})
     return combined
 
@@ -266,6 +295,8 @@ def asset_list(request):
             "customer_owner_name",
             "appl_owner_name",
             "partner_operator_name",
+            "server_owner_name",
+            "db_owner_name",
             "server_type",
             "operation_dev",
             "network_zone",
@@ -287,6 +318,8 @@ def asset_list(request):
             "customer_owner_name": "고객사 담당자",
             "appl_owner_name": "Appl. 담당자",
             "partner_operator_name": "Appl. 운영자",
+            "server_owner_name": "서버 담당자",
+            "db_owner_name": "DB 담당자",
             "hostname": "Hostname",
             "server_type": "서버 구분",
             "operation_dev": "운영/개발",
@@ -456,13 +489,11 @@ def service_master_list(request):
                     "service_grade": str(get_row_value(row, ["service_grade", "서비스 등급"], "")).strip(),
                     "service_level": str(get_row_value(row, ["service_level", "서비스 수준"], "")).strip(),
                     "itgc": parse_bool(get_row_value(row, ["itgc", "ITGC 여부"], "")),
-                    "customer_owner": str(get_row_value(row, ["customer_owner", "고객사 담당자"], "")).strip(),
-                    "partner_operator": str(
-                        get_row_value(row, ["partner_operator", "Appl. 담당자", "협력사 운영자"], "")
-                    ).strip(),
+                    "customer_owner": build_person_names_for_role(service_name, "고객사 담당자"),
+                    "partner_operator": build_person_names_for_role(service_name, "Appl. 담당자"),
                     "appl_owner": build_appl_owner_names(service_name),
-                    "server_owner": str(get_row_value(row, ["server_owner", "서버 담당자"], "")).strip(),
-                    "db_owner": str(get_row_value(row, ["db_owner", "DB 담당자"], "")).strip(),
+                    "server_owner": build_person_names_for_role(service_name, "서버 담당자"),
+                    "db_owner": build_person_names_for_role(service_name, "DB 담당자"),
                     "opened_at": parse_date(get_row_value(row, ["opened_at", "서비스 오픈일"], "")),
                     "build_type": build_type,
                     "scm_tool": str(get_row_value(row, ["scm_tool", "형상관리"], "")).strip(),
@@ -480,17 +511,6 @@ def service_master_list(request):
                     "bs_share_note": str(get_row_value(row, ["bs_share_note", "BS Share 비고"], "")).strip(),
                     "notes": str(get_row_value(row, ["notes", "비고"], "")).strip(),
                 }
-                owner_names = []
-                owner_names.extend(split_owner_names(defaults["appl_owner"]))
-                if any(name and not PersonMaster.objects.filter(name=name).exists() for name in owner_names):
-                    skipped_count += 1
-                    invalid_names = sorted(
-                        {name for name in owner_names if name and not PersonMaster.objects.filter(name=name).exists()}
-                    )
-                    import_row_errors[f"import_{excel_row_no}"] = (
-                        f"{excel_row_no}행: 담당자 마스터 미등록 성명: {', '.join(invalid_names)}"
-                    )
-                    continue
                 if mgmt_no:
                     existing = ServiceMaster.objects.filter(service_mgmt_no=mgmt_no).first()
                     if existing:
@@ -521,7 +541,6 @@ def service_master_list(request):
             deleted_ids = json.loads(request.POST.get("deleted_ids_json", "[]"))
             failed_ids = []
             row_errors = {}
-            invalid_person_names = set()
             invalid_svc_category_codes = set()
             invalid_opr_division_codes = set()
             invalid_dev_type_codes = set()
@@ -554,11 +573,11 @@ def service_master_list(request):
                     "service_grade": (row.get("service_grade") or "").strip(),
                     "service_level": (row.get("service_level") or "").strip(),
                     "itgc": parse_bool(row.get("itgc")),
-                    "customer_owner": (row.get("customer_owner") or "").strip(),
-                    "partner_operator": (row.get("partner_operator") or "").strip(),
+                    "customer_owner": build_person_names_for_role(name, "고객사 담당자"),
+                    "partner_operator": build_person_names_for_role(name, "Appl. 담당자"),
                     "appl_owner": build_appl_owner_names(name),
-                    "server_owner": (row.get("server_owner") or "").strip(),
-                    "db_owner": (row.get("db_owner") or "").strip(),
+                    "server_owner": build_person_names_for_role(name, "서버 담당자"),
+                    "db_owner": build_person_names_for_role(name, "DB 담당자"),
                     "opened_at": opened_at,
                     "build_type": (row.get("build_type") or "").strip(),
                     "scm_tool": (row.get("scm_tool") or "").strip(),
@@ -597,17 +616,6 @@ def service_master_list(request):
                     else:
                         invalid_dev_type_codes.add(payload["build_type"])
                     continue
-                owner_names = []
-                owner_names.extend(split_owner_names(payload["appl_owner"]))
-                if any(name and not PersonMaster.objects.filter(name=name).exists() for name in owner_names):
-                    if pk:
-                        failed_ids.append(pk)
-                        row_errors[str(pk)] = "담당자 마스터에 등록된 성명만 입력 가능합니다."
-                    else:
-                        for owner_part in owner_names:
-                            if owner_part and not PersonMaster.objects.filter(name=owner_part).exists():
-                                invalid_person_names.add(owner_part)
-                    continue
                 if pk:
                     try:
                         obj = ServiceMaster.objects.get(pk=pk)
@@ -626,12 +634,6 @@ def service_master_list(request):
                             if dup:
                                 failed_ids.append(dup)
                                 row_errors[str(dup)] = build_error_message(exc)
-            if invalid_person_names:
-                messages.error(
-                    request,
-                    "담당자 마스터 미등록 성명으로 저장할 수 없습니다: " + ", ".join(sorted(invalid_person_names)),
-                )
-                row_errors["__global_person__"] = "담당자 마스터 미등록 성명 입력"
             if invalid_svc_category_codes:
                 messages.error(
                     request,

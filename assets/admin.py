@@ -29,6 +29,8 @@ class InfraAssetAdmin(admin.ModelAdmin):
         "customer_owner_name",
         "appl_owner_name",
         "partner_operator_name",
+        "server_owner_name",
+        "db_owner_name",
     )
     list_filter = ("operation_dev", "network_zone", "platform_type")
     readonly_fields = [f.name for f in InfraAsset._meta.fields]

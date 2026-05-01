@@ -44,10 +44,35 @@
         .search-box .search-input {
             width: 280px;
             flex: 0 0 auto;
-        }
-        .search-box .btn-like {
-            display: inline-block;
+            box-sizing: border-box;
             padding: 6px 10px;
+            min-height: 32px;
+            font-size: 13px;
+            line-height: 1.2;
+            border: 1px solid #999;
+            border-radius: 2px;
+        }
+        .search-box button[type="submit"] {
+            display: inline-block;
+            box-sizing: border-box;
+            padding: 6px 10px;
+            min-height: 32px;
+            border: 1px solid #999;
+            border-radius: 2px;
+            background: #efefef;
+            color: #000;
+            font-size: 13px;
+            line-height: 1.2;
+            cursor: pointer;
+        }
+        .search-box button[type="submit"]:hover { background: #e5e5e5; }
+        .search-box .btn-like {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            box-sizing: border-box;
+            padding: 6px 10px;
+            min-height: 32px;
             border: 1px solid #999;
             border-radius: 2px;
             background: #efefef;
@@ -83,7 +108,14 @@
         button { padding: 6px 10px; }
         table { border-collapse: collapse; width: 100%; font-size: 13px; background: #fff; }
         th, td { border: 1px solid #d9d9d9; padding: 6px 8px; text-align: left; white-space: nowrap; }
-        th { background: #f5f5f5; position: sticky; top: 0; z-index: 2; }
+        th { background: #bdbdbd; position: sticky; top: 0; z-index: 2; }
+        /* 다른 마스터에서 FK로만 보여주는 읽기전용 필드 (테두리는 아래 목록 입력과 동일) */
+        .list-screen .wrap table td input.input-fk-readonly[readonly],
+        .list-screen .wrap table td textarea.input-fk-readonly[readonly] {
+            background-color: #ececec;
+            color: #333;
+            cursor: default;
+        }
         .list-screen .wrap table th,
         .list-screen .wrap table td {
             height: 40px;
@@ -100,6 +132,7 @@
             font-family: inherit;
             font-size: inherit;
             box-sizing: border-box;
+            border: 1px solid #8a8a8a;
         }
         .wrap { overflow: auto; max-height: none; border: 1px solid #d9d9d9; background: #fff; flex: 1; min-height: 0; }
         .bottom-actions { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; }

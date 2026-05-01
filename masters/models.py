@@ -72,7 +72,7 @@ class PersonMaster(models.Model):
     name = models.CharField("성명", max_length=100)
     role = models.CharField("역할", max_length=20, blank=True)
     company = models.CharField("소속 조직", max_length=100, blank=True)
-    employee_no = models.CharField("사번", max_length=50, blank=True)
+    employee_no = models.CharField("사번", max_length=50, blank=True, unique=True)
     phone = models.CharField("연락처", max_length=50, blank=True)
     email = models.EmailField("내부 메일", blank=True)
     ext_email = models.EmailField("외부 메일", blank=True)
@@ -94,9 +94,23 @@ class PersonMaster(models.Model):
             next_no = int(last[3:]) + 1 if last else 1
             return f"{prefix}{next_no:04d}"
 
+    @classmethod
+    def next_employee_no(cls):
+        """사번: I + 5자리 숫자(00001~), DB 내 기존 I패턴 최대값 다음."""
+        prefix = "I"
+        with transaction.atomic():
+            max_n = 0
+            for raw in cls.objects.exclude(employee_no="").values_list("employee_no", flat=True):
+                s = str(raw).strip()
+                if len(s) == 6 and s.startswith(prefix) and s[1:].isdigit():
+                    max_n = max(max_n, int(s[1:], 10))
+            return f"{prefix}{max_n + 1:05d}"
+
     def save(self, *args, **kwargs):
         if not self.person_mgmt_no:
             self.person_mgmt_no = self.next_person_mgmt_no()
+        if not (self.employee_no or "").strip():
+            self.employee_no = self.next_employee_no()
         super().save(*args, **kwargs)
 
     def __str__(self):

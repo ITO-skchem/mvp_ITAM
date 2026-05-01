@@ -23,27 +23,42 @@ def compute_system_mgmt_no(service_mgmt_no: str, asset_mgmt_no: str) -> str:
 
 def map_service_owners_to_asset_fields(service_obj: "ServiceMaster | None"):
     if not service_obj:
-        return {"customer_owner_name": "", "appl_owner_name": "", "partner_operator_name": ""}
+        return {
+            "customer_owner_name": "",
+            "appl_owner_name": "",
+            "partner_operator_name": "",
+            "server_owner_name": "",
+            "db_owner_name": "",
+        }
     return {
         "customer_owner_name": service_obj.customer_owner or "",
         "appl_owner_name": service_obj.partner_operator or "",
         "partner_operator_name": service_obj.appl_owner or "",
+        "server_owner_name": service_obj.server_owner or "",
+        "db_owner_name": service_obj.db_owner or "",
     }
 
 
-def build_appl_owner_names(service_name: str) -> str:
+def build_person_names_for_role(service_name: str, role: str) -> str:
+    """담당 시스템=서비스명이고 역할이 일치하는 담당자 성명, person_mgmt_no 순."""
     from masters.models import PersonMaster
 
     target = str(service_name or "").strip()
-    if not target:
+    role_norm = str(role or "").strip()
+    if not target or not role_norm:
         return ""
     names = list(
-        PersonMaster.objects.filter(system_name=target)
+        PersonMaster.objects.filter(system_name=target, role=role_norm)
         .order_by("person_mgmt_no", "name")
         .values_list("name", flat=True)
     )
-    unique_names = list(dict.fromkeys([name.strip() for name in names if str(name).strip()]))
+    unique_names = list(dict.fromkeys([n.strip() for n in names if str(n).strip()]))
     return "; ".join(unique_names)
+
+
+def build_appl_owner_names(service_name: str) -> str:
+    """담당 시스템=서비스명이고 역할이 Appl. 운영자인 담당자 성명, person_mgmt_no 순."""
+    return build_person_names_for_role(service_name, "Appl. 운영자")
 
 
 def resolve_infra_owner_fields(service_obj: "ServiceMaster | None"):
@@ -109,6 +124,8 @@ def rebuild_infra_assets_from_masters():
                 customer_owner_name=owners["customer_owner_name"],
                 appl_owner_name=owners["appl_owner_name"],
                 partner_operator_name=owners["partner_operator_name"],
+                server_owner_name=owners["server_owner_name"],
+                db_owner_name=owners["db_owner_name"],
                 component=comp,
                 **comp_fields,
             )

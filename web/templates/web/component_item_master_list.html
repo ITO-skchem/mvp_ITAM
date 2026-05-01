@@ -71,8 +71,11 @@
         box-sizing: border-box;
     }
     #component-item-table thead .sticky-col {
-        background: #f5f5f5;
+        background: #bdbdbd;
         z-index: 4;
+    }
+    #component-item-table thead th {
+        background: #bdbdbd;
     }
     #component-item-table tbody .sticky-col { z-index: 3; }
     #component-item-table .select-col { left: 0; }
@@ -149,7 +152,7 @@
             <tbody>
                 {% for c in items %}
                 <tr>
-                    <td class="sticky-col select-col"><input type="checkbox" class="row-check" {% if c.id in failed_ids %}checked{% endif %}></td>
+                    <td class="sticky-col select-col"><input type="checkbox" class="row-check"></td>
                     <td class="sticky-col mgmt-col">
                         <input type="hidden" data-field="id" value="{{ c.id }}">
                         <input type="hidden" data-field="component_mgmt_no" value="{{ c.component_mgmt_no }}">
