@@ -6,8 +6,9 @@ from .models import AuditLog, Code, CodeGroup
 class CodeInline(admin.TabularInline):
     model = Code
     extra = 1
-    fields = ("code", "name", "is_active", "sort_order", "description")
+    fields = ("code", "name", "related_code", "is_active", "sort_order", "description")
     ordering = ("sort_order", "code")
+    autocomplete_fields = ("related_code",)
 
 
 @admin.register(CodeGroup)
@@ -20,10 +21,11 @@ class CodeGroupAdmin(admin.ModelAdmin):
 
 @admin.register(Code)
 class CodeAdmin(admin.ModelAdmin):
-    list_display = ("group", "code", "name", "is_active", "sort_order")
+    list_display = ("group", "code", "name", "related_code", "is_active", "sort_order")
     list_filter = ("group", "is_active")
     search_fields = ("group__key", "code", "name")
     ordering = ("group__sort_order", "group__key", "sort_order", "code")
+    autocomplete_fields = ("related_code",)
 
 
 @admin.register(AuditLog)

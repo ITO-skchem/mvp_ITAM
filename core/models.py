@@ -23,6 +23,15 @@ class Code(models.Model):
     group = models.ForeignKey(CodeGroup, on_delete=models.CASCADE, related_name="codes", verbose_name="코드그룹")
     code = models.CharField("코드값", max_length=50)
     name = models.CharField("코드명", max_length=100)
+    related_code = models.ForeignKey(
+        "self",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="typed_component_codes",
+        verbose_name="분류 코드",
+        help_text="다른 코드(예: 상위 분류)를 참조할 때 사용",
+    )
     description = models.TextField("설명", blank=True)
     is_active = models.BooleanField("사용여부", default=True)
     sort_order = models.PositiveIntegerField("정렬순서", default=100)

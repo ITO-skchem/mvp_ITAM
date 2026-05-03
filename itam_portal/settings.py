@@ -15,6 +15,11 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+# Python 3.13+: fix Django 4.2 BaseContext.__copy__ before admin / templates run.
+from . import django_compat as _django_compat
+
+_django_compat.apply_django_template_context_copy_fix()
+
 load_dotenv()
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.

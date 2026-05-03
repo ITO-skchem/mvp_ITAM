@@ -44,23 +44,22 @@
     }
     #component-item-table th.server-type-col,
     #component-item-table td.server-type-col {
-        width: 8em;
-        min-width: 8em;
-        max-width: 8em;
-    }
-    #component-item-table th.operation-dev-col,
-    #component-item-table td.operation-dev-col {
-        width: 8em;
-        min-width: 8em;
-        max-width: 8em;
-    }
-    #component-item-table th.network-zone-col,
-    #component-item-table td.network-zone-col {
-        width: 8em;
-        min-width: 8em;
-        max-width: 8em;
+        width: 10em;
+        min-width: 10em;
+        max-width: 12em;
     }
     #component-item-table td.service-name-col input[data-field="system_name"] {
+        width: 100%;
+        max-width: 100%;
+        box-sizing: border-box;
+    }
+    #component-item-table th.component-name-col,
+    #component-item-table td.component-name-col {
+        width: 14em;
+        min-width: 14em;
+        max-width: 14em;
+    }
+    #component-item-table td.component-name-col input[data-field="url_or_db_name"] {
         width: 100%;
         max-width: 100%;
         box-sizing: border-box;
@@ -80,10 +79,10 @@
     #component-item-table tbody .sticky-col { z-index: 3; }
     #component-item-table .select-col { left: 0; }
     #component-item-table .mgmt-col { left: var(--w-select); }
-    #component-item-table .hostname-col { left: calc(var(--w-select) + var(--w-mgmt)); }
-    #component-item-table .service-name-col { left: calc(var(--w-select) + var(--w-mgmt) + var(--w-hostname)); }
-    #component-item-table th.service-name-col,
-    #component-item-table td.service-name-col {
+    #component-item-table .service-name-col { left: calc(var(--w-select) + var(--w-mgmt)); }
+    #component-item-table .hostname-col { left: calc(var(--w-select) + var(--w-mgmt) + var(--w-service)); }
+    #component-item-table th.hostname-col,
+    #component-item-table td.hostname-col {
         border-right: 1px solid #b3b3b3;
     }
     #component-item-table .sticky-boundary {
@@ -107,18 +106,11 @@
     <option value="{{ svc_name }}"></option>
     {% endfor %}
 </datalist>
-<datalist id="svr-type-code-list">
-    {% for server_type_code in svr_type_codes %}
-    <option value="{{ server_type_code }}"></option>
-    {% endfor %}
-</datalist>
-<datalist id="svr-type-code-list-filtered"></datalist>
-<datalist id="devops-code-list">
-    {% for devops_code in devops_codes %}
-    <option value="{{ devops_code }}"></option>
-    {% endfor %}
-</datalist>
-<datalist id="devops-code-list-filtered"></datalist>
+<datalist id="hostname-code-list-filtered"></datalist>
+<datalist id="component-product-code-list-filtered"></datalist>
+{{ hosts_by_service|json_script:"hosts-by-service-data" }}
+{{ component_product_codes|json_script:"component-product-codes-data" }}
+{{ component_code_to_group_name|json_script:"component-code-to-group-data" }}
 <form id="component-item-form" class="list-form" method="post" enctype="multipart/form-data">
     {% csrf_token %}
     <input type="hidden" name="action" id="component-item-action" value="save">
@@ -129,21 +121,11 @@
             <thead>
                 <tr>
                     <th class="sticky-col select-col"><input type="checkbox" id="component-item-check-all"></th>
-                    <th class="sticky-col mgmt-col">컴포넌트번호</th>
-                    <th class="sticky-col hostname-col">Hostname</th>
-                    <th class="sticky-col service-name-col sticky-boundary">서비스명</th>
-                    <th class="server-type-col">서버 구분</th>
-                    <th class="operation-dev-col">운영/개발</th>
-                    <th>플랫폼 구분</th>
-                    <th>위치</th>
-                    <th class="network-zone-col">네트웍 구분</th>
-                    <th>IP</th>
-                    <th>Port</th>
-                    <th>MW</th>
-                    <th>OS/DBMS</th>
-                    <th>URL/DB명</th>
-                    <th>SSL 도메인</th>
-                    <th>인증서 포맷</th>
+                    <th class="sticky-col mgmt-col">컴포넌트 번호</th>
+                    <th class="sticky-col service-name-col">서비스명</th>
+                    <th class="sticky-col hostname-col sticky-boundary">Hostname</th>
+                    <th class="component-name-col">컴포넌트명</th>
+                    <th class="server-type-col">컴포넌트구분</th>
                     <th>비고1</th>
                     <th>비고2</th>
                     <th>오류</th>
@@ -158,30 +140,37 @@
                         <input type="hidden" data-field="component_mgmt_no" value="{{ c.component_mgmt_no }}">
                         <span class="key-display">{{ c.component_mgmt_no }}</span>
                     </td>
-                    <td class="sticky-col hostname-col"><input type="text" data-field="hostname" value="{{ c.hostname }}"></td>
-                    <td class="sticky-col service-name-col sticky-boundary"><input type="text" data-field="system_name" list="service-name-list" value="{{ c.system_name }}"></td>
-                    <td class="server-type-col"><input type="text" data-field="server_type" list="svr-type-code-list-filtered" value="{{ c.server_type }}"></td>
-                    <td class="operation-dev-col"><input type="text" data-field="operation_dev" list="devops-code-list-filtered" value="{{ c.operation_dev }}"></td>
-                    <td><input type="text" data-field="platform_type" value="{{ c.platform_type }}"></td>
-                    <td><input type="text" data-field="location" value="{{ c.location }}"></td>
-                    <td class="network-zone-col"><input type="text" data-field="network_zone" value="{{ c.network_zone }}"></td>
-                    <td><input type="text" data-field="ip" value="{{ c.ip }}"></td>
-                    <td><input type="text" data-field="port" value="{{ c.port }}"></td>
-                    <td><input type="text" data-field="mw" value="{{ c.mw }}"></td>
-                    <td><input type="text" data-field="os_dbms" value="{{ c.os_dbms }}"></td>
-                    <td><input type="text" data-field="url_or_db_name" value="{{ c.url_or_db_name }}"></td>
-                    <td><input type="text" data-field="ssl_domain" value="{{ c.ssl_domain }}"></td>
-                    <td><input type="text" data-field="cert_format" value="{{ c.cert_format }}"></td>
+                    <td class="sticky-col service-name-col"><input type="text" data-field="system_name" list="service-name-list" value="{{ c.system_name }}"></td>
+                    <td class="sticky-col hostname-col sticky-boundary"><input type="text" data-field="hostname" list="hostname-code-list-filtered" value="{{ c.hostname }}" autocomplete="off"></td>
+                    <td class="component-name-col"><input type="text" data-field="url_or_db_name" list="component-product-code-list-filtered" value="{{ c.url_or_db_name }}" autocomplete="off"></td>
+                    <td class="server-type-col"><input type="text" readonly class="input-fk-readonly" data-field="server_type" value="{{ c.server_type }}"></td>
                     <td><input type="text" data-field="remark1" value="{{ c.remark1 }}"></td>
                     <td><input type="text" data-field="remark2" value="{{ c.remark2 }}"></td>
                     <td style="color:#b10000;">{{ row_errors|lookup:c.id }}</td>
                 </tr>
                 {% empty %}
-                <tr><td colspan="19">등록된 컴포넌트 마스터가 없습니다.</td></tr>
+                <tr class="empty-state-row"><td colspan="9">등록된 컴포넌트 마스터가 없습니다.</td></tr>
                 {% endfor %}
             </tbody>
         </table>
     </div>
+    <template id="component-item-new-row-template">
+        <tr>
+            <td class="sticky-col select-col"><input type="checkbox" class="row-check" checked></td>
+            <td class="sticky-col mgmt-col">
+                <input type="hidden" data-field="id" value="">
+                <input type="hidden" data-field="component_mgmt_no" value="">
+                <span class="key-display"></span>
+            </td>
+            <td class="sticky-col service-name-col"><input type="text" data-field="system_name" list="service-name-list" value=""></td>
+            <td class="sticky-col hostname-col sticky-boundary"><input type="text" data-field="hostname" list="hostname-code-list-filtered" value="" autocomplete="off"></td>
+            <td class="component-name-col"><input type="text" data-field="url_or_db_name" list="component-product-code-list-filtered" value="" autocomplete="off"></td>
+            <td class="server-type-col"><input type="text" readonly class="input-fk-readonly" data-field="server_type" value=""></td>
+            <td><input type="text" data-field="remark1" value=""></td>
+            <td><input type="text" data-field="remark2" value=""></td>
+            <td style="color:#b10000;"></td>
+        </tr>
+    </template>
 
     <div class="bottom-actions">
         <div style="width:260px;"></div>
@@ -212,9 +201,11 @@
     const rowsInput = document.getElementById("component-item-rows-json");
     const deletedInput = document.getElementById("component-item-deleted-ids-json");
     const deletedIds = [];
-    const svrTypeCodes = [{% for server_type_code in svr_type_codes %}"{{ server_type_code|escapejs }}"{% if not forloop.last %}, {% endif %}{% endfor %}];
-    const devopsCodes = [{% for devops_code in devops_codes %}"{{ devops_code|escapejs }}"{% if not forloop.last %}, {% endif %}{% endfor %}];
+    const hostsByService = JSON.parse(document.getElementById("hosts-by-service-data").textContent);
+    const productCodes = JSON.parse(document.getElementById("component-product-codes-data").textContent);
+    const codeToGroupName = JSON.parse(document.getElementById("component-code-to-group-data").textContent);
     let isComposing = false;
+    const escapeAttr = (s) => String(s).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
     const usedKeys = new Set(
         [...table.querySelectorAll('input[data-field="component_mgmt_no"]')]
             .map((el) => el.value)
@@ -241,8 +232,24 @@
         table.querySelectorAll(".row-check").forEach((el) => { el.checked = e.target.checked; });
     });
 
+    const isEmptyStateRow = (tr) => tr?.classList?.contains("empty-state-row");
+    const dataRowsInTbody = () =>
+        [...table.querySelectorAll("tbody tr")].filter((tr) => !isEmptyStateRow(tr));
+
+    const initNewRowKeys = (row) => {
+        const keyEl = row.querySelector('[data-field="component_mgmt_no"]');
+        const keySpan = row.querySelector(".key-display");
+        if (keyEl) {
+            keyEl.value = nextKey();
+            if (keySpan) keySpan.textContent = keyEl.value;
+        }
+        const chk = row.querySelector(".row-check");
+        if (chk) chk.checked = true;
+    };
+
     const cloneRow = (srcRow, copyValues) => {
         const row = srcRow.cloneNode(true);
+        row.classList.remove("empty-state-row");
         row.querySelectorAll("input").forEach((el) => {
             if (el.classList.contains("row-check")) { el.checked = true; return; }
             if (el.dataset.field === "id") { el.value = ""; return; }
@@ -255,7 +262,19 @@
             if (el.type === "checkbox") { el.checked = copyValues ? el.checked : false; return; }
             if (!copyValues) el.value = "";
         });
+        const errCell = row.querySelector("td:last-child");
+        if (errCell && errCell.style) errCell.textContent = "";
+        syncServerTypeFromProductCode(row);
         return row;
+    };
+
+    const appendBlankRowFromTemplate = (tbody) => {
+        const tpl = document.getElementById("component-item-new-row-template");
+        if (!tpl?.content?.firstElementChild) return;
+        tbody.querySelectorAll(".empty-state-row").forEach((el) => el.remove());
+        const row = tpl.content.firstElementChild.cloneNode(true);
+        initNewRowKeys(row);
+        tbody.appendChild(row);
     };
 
     const markChecked = (target) => {
@@ -264,151 +283,279 @@
         const rowCheck = tr.querySelector(".row-check");
         if (rowCheck) rowCheck.checked = true;
     };
-    const findServerTypeMatch = (keyword) => {
-        const lower = keyword.toLowerCase();
-        return svrTypeCodes.find((code) => code.toLowerCase().startsWith(lower)) || "";
+
+    const syncServerTypeFromProductCode = (tr) => {
+        const pe = tr?.querySelector('[data-field="url_or_db_name"]');
+        const se = tr?.querySelector('[data-field="server_type"]');
+        if (!pe || !se) return;
+        const code = (pe.value || "").trim();
+        se.value =
+            code && Object.prototype.hasOwnProperty.call(codeToGroupName, code) ? codeToGroupName[code] : "";
     };
-    const findOperationDevMatch = (keyword) => {
-        const lower = keyword.toLowerCase();
-        return devopsCodes.find((code) => code.toLowerCase().startsWith(lower)) || "";
+
+    const getRowHosts = (tr) => {
+        if (!tr) return [];
+        const sn = (tr.querySelector('[data-field="system_name"]')?.value || "").trim();
+        return sn ? (hostsByService[sn] || []) : [];
     };
-    const updateServerTypeDatalist = (keyword) => {
-        const datalist = document.getElementById("svr-type-code-list-filtered");
-        if (!datalist) return;
-        const lower = (keyword || "").toLowerCase();
-        const matches = lower ? svrTypeCodes.filter((code) => code.toLowerCase().startsWith(lower)) : svrTypeCodes;
-        datalist.innerHTML = matches.map((code) => `<option value="${code}"></option>`).join("");
+    const syncHostnameForService = (tr) => {
+        const snEl = tr?.querySelector('[data-field="system_name"]');
+        const hnEl = tr?.querySelector('[data-field="hostname"]');
+        if (!hnEl || !hnEl.value || !(snEl?.value || "").trim()) return;
+        const hosts = getRowHosts(tr);
+        if (!hosts.length) {
+            hnEl.value = "";
+            markChecked(hnEl);
+            return;
+        }
+        if (!hosts.includes(hnEl.value)) {
+            hnEl.value = "";
+            markChecked(hnEl);
+        }
     };
-    const updateOperationDevDatalist = (keyword) => {
-        const datalist = document.getElementById("devops-code-list-filtered");
-        if (!datalist) return;
-        const lower = (keyword || "").toLowerCase();
-        const matches = lower ? devopsCodes.filter((code) => code.toLowerCase().startsWith(lower)) : devopsCodes;
-        datalist.innerHTML = matches.map((code) => `<option value="${code}"></option>`).join("");
+    const updateHostnameDatalist = (tr, keyword) => {
+        const dl = document.getElementById("hostname-code-list-filtered");
+        if (!dl) return;
+        const hosts = getRowHosts(tr);
+        const k = (keyword || "").toLowerCase();
+        const matches = k ? hosts.filter((h) => h.toLowerCase().includes(k)) : hosts;
+        dl.innerHTML = matches.map((h) => `<option value="${escapeAttr(h)}"></option>`).join("");
     };
-    const showServerTypeSuggestion = (target) => {
+    const findHostPrefix = (hosts, keyword) => {
+        const k = (keyword || "").toLowerCase();
+        return hosts.find((h) => h.toLowerCase().startsWith(k)) || "";
+    };
+    const showHostSuggestion = (target) => {
         if (isComposing) return false;
+        const tr = target.closest("tr");
+        const hosts = getRowHosts(tr);
         const keyword = target.value || "";
-        updateServerTypeDatalist(keyword);
+        updateHostnameDatalist(tr, keyword);
         if (!keyword) return false;
-        const matchedCode = findServerTypeMatch(keyword);
-        if (!matchedCode) return false;
+        const matched = findHostPrefix(hosts, keyword);
+        if (!matched) return false;
         if (target.setSelectionRange && target === document.activeElement) {
-            target.value = matchedCode;
-            target.setSelectionRange(keyword.length, matchedCode.length);
+            target.value = matched;
+            target.setSelectionRange(keyword.length, matched.length);
         }
         return true;
     };
-    const commitServerTypeSuggestion = (target) => {
+    const commitHostSuggestion = (target) => {
         if (isComposing) return false;
+        const tr = target.closest("tr");
+        const hosts = getRowHosts(tr);
         const typed = (target.value || "").trim();
         if (!typed) return false;
-        const matchedCode = findServerTypeMatch(typed);
-        if (!matchedCode) return false;
-        if (target.value !== matchedCode) {
-            target.value = matchedCode;
+        const tl = typed.toLowerCase();
+        const exact = hosts.find((h) => h.toLowerCase() === tl);
+        if (exact) {
+            if (target.value !== exact) {
+                target.value = exact;
+                markChecked(target);
+                return true;
+            }
+            return false;
+        }
+        const inc = hosts.filter((h) => h.toLowerCase().includes(tl));
+        if (inc.length === 1) {
+            target.value = inc[0];
+            markChecked(target);
+            return true;
+        }
+        const pref = hosts.find((h) => h.toLowerCase().startsWith(tl));
+        if (pref) {
+            target.value = pref;
             markChecked(target);
             return true;
         }
         return false;
     };
-    const showOperationDevSuggestion = (target) => {
+
+    const updateProductDatalist = (keyword) => {
+        const dl = document.getElementById("component-product-code-list-filtered");
+        if (!dl) return;
+        const k = (keyword || "").toLowerCase();
+        const matches = k
+            ? productCodes.filter(
+                  (r) => r.code.toLowerCase().includes(k) || r.name.toLowerCase().includes(k)
+              )
+            : productCodes;
+        dl.innerHTML = matches.map((r) => `<option value="${escapeAttr(r.code)}"></option>`).join("");
+    };
+    const findProductPrefixRow = (keyword) => {
+        const k = (keyword || "").toLowerCase();
+        return (
+            productCodes.find((r) => r.code.toLowerCase().startsWith(k)) ||
+            productCodes.find((r) => r.name.toLowerCase().startsWith(k)) ||
+            null
+        );
+    };
+    const showProductSuggestion = (target) => {
         if (isComposing) return false;
+        const tr = target.closest("tr");
         const keyword = target.value || "";
-        updateOperationDevDatalist(keyword);
-        if (!keyword) return false;
-        const matchedCode = findOperationDevMatch(keyword);
-        if (!matchedCode) return false;
-        if (target.setSelectionRange && target === document.activeElement) {
-            target.value = matchedCode;
-            target.setSelectionRange(keyword.length, matchedCode.length);
+        updateProductDatalist(keyword);
+        if (!keyword) {
+            syncServerTypeFromProductCode(tr);
+            return false;
         }
+        const row = findProductPrefixRow(keyword);
+        if (!row) {
+            syncServerTypeFromProductCode(tr);
+            return false;
+        }
+        if (target.setSelectionRange && target === document.activeElement) {
+            target.value = row.code;
+            target.setSelectionRange(keyword.length, row.code.length);
+        }
+        syncServerTypeFromProductCode(tr);
         return true;
     };
-    const commitOperationDevSuggestion = (target) => {
+    const commitProductSuggestion = (target) => {
+        const tr = target.closest("tr");
         if (isComposing) return false;
         const typed = (target.value || "").trim();
-        if (!typed) return false;
-        const matchedCode = findOperationDevMatch(typed);
-        if (!matchedCode) return false;
-        if (target.value !== matchedCode) {
-            target.value = matchedCode;
+        if (!typed) {
+            syncServerTypeFromProductCode(tr);
+            return false;
+        }
+        const tl = typed.toLowerCase();
+        const exact = productCodes.find((r) => r.code.toLowerCase() === tl);
+        if (exact) {
+            if (target.value !== exact.code) {
+                target.value = exact.code;
+                markChecked(target);
+                syncServerTypeFromProductCode(tr);
+                return true;
+            }
+            syncServerTypeFromProductCode(tr);
+            return false;
+        }
+        const cand = productCodes.filter(
+            (r) => r.code.toLowerCase().includes(tl) || r.name.toLowerCase().includes(tl)
+        );
+        if (cand.length === 1) {
+            target.value = cand[0].code;
             markChecked(target);
+            syncServerTypeFromProductCode(tr);
             return true;
         }
+        const pref =
+            productCodes.find((r) => r.code.toLowerCase().startsWith(tl)) ||
+            productCodes.find((r) => r.name.toLowerCase().startsWith(tl));
+        if (pref) {
+            target.value = pref.code;
+            markChecked(target);
+            syncServerTypeFromProductCode(tr);
+            return true;
+        }
+        syncServerTypeFromProductCode(tr);
         return false;
     };
 
     table.addEventListener("input", (e) => {
         if (!e.target.matches("[data-field]")) return;
-        if (e.target.dataset.field === "server_type") {
-            if ((e.inputType || "").startsWith("delete")) {
-                updateServerTypeDatalist(e.target.value || "");
-                return;
-            }
-            showServerTypeSuggestion(e.target);
+        const tr = e.target.closest("tr");
+        if (e.target.dataset.field === "system_name") {
+            if (tr) syncHostnameForService(tr);
+            markChecked(e.target);
             return;
         }
-        if (e.target.dataset.field === "operation_dev") {
+        if (e.target.dataset.field === "hostname") {
             if ((e.inputType || "").startsWith("delete")) {
-                updateOperationDevDatalist(e.target.value || "");
+                updateHostnameDatalist(tr, e.target.value || "");
                 return;
             }
-            showOperationDevSuggestion(e.target);
+            showHostSuggestion(e.target);
+            markChecked(e.target);
+            return;
+        }
+        if (e.target.dataset.field === "url_or_db_name") {
+            if ((e.inputType || "").startsWith("delete")) {
+                updateProductDatalist(e.target.value || "");
+                syncServerTypeFromProductCode(tr);
+                return;
+            }
+            showProductSuggestion(e.target);
+            markChecked(e.target);
             return;
         }
         markChecked(e.target);
     });
     table.addEventListener("change", (e) => {
-        if (e.target.matches("[data-field]")) markChecked(e.target);
+        if (!e.target.matches("[data-field]")) return;
+        markChecked(e.target);
+        if (e.target.dataset.field === "url_or_db_name") {
+            syncServerTypeFromProductCode(e.target.closest("tr"));
+        }
     });
     table.addEventListener("compositionstart", (e) => {
-        if (!["server_type", "operation_dev"].includes(e.target.dataset.field)) return;
+        if (!["hostname", "url_or_db_name"].includes(e.target.dataset.field)) return;
         isComposing = true;
     });
     table.addEventListener("compositionend", (e) => {
-        if (!["server_type", "operation_dev"].includes(e.target.dataset.field)) return;
+        if (!["hostname", "url_or_db_name"].includes(e.target.dataset.field)) return;
         isComposing = false;
-        if (e.target.dataset.field === "server_type") {
-            showServerTypeSuggestion(e.target);
-            return;
+        if (e.target.dataset.field === "hostname") showHostSuggestion(e.target);
+        if (e.target.dataset.field === "url_or_db_name") showProductSuggestion(e.target);
+    });
+    table.addEventListener("focusin", (e) => {
+        if (e.target.matches('[data-field="hostname"]')) {
+            const tr = e.target.closest("tr");
+            updateHostnameDatalist(tr, e.target.value || "");
         }
-        showOperationDevSuggestion(e.target);
+        if (e.target.matches('[data-field="url_or_db_name"]')) {
+            updateProductDatalist(e.target.value || "");
+        }
     });
 
     document.getElementById("component-item-add-btn").addEventListener("click", () => {
         const tbody = table.querySelector("tbody");
-        const selected = [...tbody.querySelectorAll("tr")].filter((tr) => tr.querySelector(".row-check:checked"));
-        if (selected.length) { selected.forEach((tr) => tbody.appendChild(cloneRow(tr, true))); return; }
-        const base = tbody.querySelector("tr");
-        if (base) tbody.appendChild(cloneRow(base, false));
+        const dataRows = dataRowsInTbody();
+        const selected = dataRows.filter((tr) => tr.querySelector(".row-check:checked"));
+        if (selected.length) {
+            selected.forEach((tr) => tbody.appendChild(cloneRow(tr, true)));
+            return;
+        }
+        if (dataRows.length) {
+            tbody.appendChild(cloneRow(dataRows[0], false));
+            return;
+        }
+        appendBlankRowFromTemplate(tbody);
     });
 
     document.getElementById("component-item-delete-btn").addEventListener("click", () => {
-        const rows = [...table.querySelectorAll("tbody tr")].filter((tr) => tr.querySelector(".row-check:checked"));
+        const rows = dataRowsInTbody().filter((tr) => tr.querySelector(".row-check:checked"));
         rows.forEach((tr) => {
             const idEl = tr.querySelector('input[data-field="id"]');
             if (idEl?.value) deletedIds.push(idEl.value);
             tr.remove();
         });
+        const tbody = table.querySelector("tbody");
+        if (tbody && !dataRowsInTbody().length) {
+            const tr = document.createElement("tr");
+            tr.className = "empty-state-row";
+            tr.innerHTML = '<td colspan="9">등록된 컴포넌트 마스터가 없습니다.</td>';
+            tbody.appendChild(tr);
+        }
     });
 
     const serviceNames = [{% for svc_name in service_names %}"{{ svc_name|escapejs }}"{% if not forloop.last %}, {% endif %}{% endfor %}];
     table.addEventListener("keydown", (e) => {
-        if (e.target.dataset.field === "server_type") {
+        if (e.target.dataset.field === "hostname") {
             if (e.key === "Enter") {
-                if (commitServerTypeSuggestion(e.target)) e.preventDefault();
+                if (commitHostSuggestion(e.target)) e.preventDefault();
                 return;
             }
-            if (e.key === "Tab") commitServerTypeSuggestion(e.target);
+            if (e.key === "Tab") commitHostSuggestion(e.target);
             return;
         }
-        if (e.target.dataset.field === "operation_dev") {
+        if (e.target.dataset.field === "url_or_db_name") {
             if (e.key === "Enter") {
-                if (commitOperationDevSuggestion(e.target)) e.preventDefault();
+                if (commitProductSuggestion(e.target)) e.preventDefault();
                 return;
             }
-            if (e.key === "Tab") commitOperationDevSuggestion(e.target);
+            if (e.key === "Tab") commitProductSuggestion(e.target);
             return;
         }
         if (e.key === "Enter" && e.target.dataset.field === "system_name") {
@@ -419,20 +566,36 @@
                 e.preventDefault();
                 e.target.value = matches[0];
                 markChecked(e.target);
+                const tr = e.target.closest("tr");
+                if (tr) syncHostnameForService(tr);
             }
         }
     });
     table.addEventListener("blur", (e) => {
-        if (e.target.dataset.field === "server_type") {
-            commitServerTypeSuggestion(e.target);
+        const f = e.target.dataset.field;
+        if (f === "hostname") {
+            commitHostSuggestion(e.target);
             return;
         }
-        if (e.target.dataset.field === "operation_dev") {
-            commitOperationDevSuggestion(e.target);
+        if (f === "url_or_db_name") {
+            commitProductSuggestion(e.target);
+            return;
+        }
+        if (f === "system_name") {
+            const tr = e.target.closest("tr");
+            const keyword = (e.target.value || "").trim().toLowerCase();
+            if (keyword) {
+                const matches = serviceNames.filter((n) => n.toLowerCase().includes(keyword));
+                if (matches.length === 1) {
+                    e.target.value = matches[0];
+                    markChecked(e.target);
+                }
+            }
+            if (tr) syncHostnameForService(tr);
         }
     }, true);
-    updateServerTypeDatalist("");
-    updateOperationDevDatalist("");
+    updateProductDatalist("");
+    dataRowsInTbody().forEach((tr) => syncServerTypeFromProductCode(tr));
 
     document.getElementById("component-item-save-btn").addEventListener("click", () => {
         const rows = [...table.querySelectorAll("tbody tr")]

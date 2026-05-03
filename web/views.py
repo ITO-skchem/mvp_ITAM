@@ -17,6 +17,66 @@ from assets.models import InfraAsset
 from core.models import AuditLog, Code
 from masters.models import Component, ComponentMaster, PersonMaster, ServiceMaster
 
+# 컴포넌트 마스터 — 컴포넌트명(제품+버전 코드) 선택용
+COMPONENT_PRODUCT_CODE_GROUPS = (
+    "language",
+    "runtime",
+    "framework",
+    "library",
+    "middleware",
+    "os",
+    "db",
+)
+
+
+def build_hosts_by_service():
+    """자산 마스터(Component) 기준: 서비스명(system_name)별 Hostname 목록."""
+    mapping = {}
+    rows = (
+        Component.objects.exclude(system_name="")
+        .exclude(hostname="")
+        .values_list("system_name", "hostname")
+        .order_by("system_name", "hostname")
+    )
+    for sn, hn in rows:
+        lst = mapping.setdefault(sn, [])
+        if hn not in lst:
+            lst.append(hn)
+    return mapping
+
+
+def build_component_product_codes():
+    """7개 코드 그룹에서 code·name 목록(코드 기준 중복 제거, 그룹 순·정렬 유지)."""
+    out = []
+    seen = set()
+    for gk in COMPONENT_PRODUCT_CODE_GROUPS:
+        qs = (
+            Code.objects.filter(group__key=gk, group__is_active=True, is_active=True)
+            .order_by("sort_order", "code")
+            .values_list("code", "name")
+        )
+        for code, name in qs:
+            if code in seen:
+                continue
+            seen.add(code)
+            out.append({"code": code, "name": name})
+    return out
+
+
+def build_component_code_to_group_name():
+    """컴포넌트명(코드값) → 소속 코드그룹 표시명(CodeGroup.name). 동일 code 중복 시 그룹 순서상 먼저인 쪽."""
+    mapping = {}
+    for gk in COMPONENT_PRODUCT_CODE_GROUPS:
+        for row in (
+            Code.objects.filter(group__key=gk, group__is_active=True, is_active=True)
+            .select_related("group")
+            .order_by("sort_order", "code")
+        ):
+            if row.code not in mapping:
+                mapping[row.code] = row.group.name
+    return mapping
+
+
 PERSON_ROLE_CODES = [
     "고객사 담당자",
     "Appl. 담당자",
@@ -1315,10 +1375,10 @@ def component_item_master_list(request):
     page = request.GET.get("page", "").strip()
     failed_ids = {int(x) for x in request.GET.get("failed_ids", "").split(",") if x.isdigit()}
     row_errors = request.session.pop("row_errors_component_item", {})
-    svr_type_codes = build_code_values("svr_type")
-    svr_type_code_set = set(svr_type_codes)
-    devops_codes = build_code_values("devops")
-    devops_code_set = set(devops_codes)
+    hosts_by_service = build_hosts_by_service()
+    component_product_codes = build_component_product_codes()
+    product_code_set = {p["code"] for p in component_product_codes}
+    code_to_group_name = build_component_code_to_group_name()
     qs = ComponentMaster.objects.all().order_by("component_mgmt_no")
     if query:
         qs = qs.filter(build_model_text_search_q(ComponentMaster, query))
@@ -1326,39 +1386,19 @@ def component_item_master_list(request):
     if request.GET.get("export") == "1":
         cols = [
             "component_mgmt_no",
-            "hostname",
             "system_name",
-            "server_type",
-            "operation_dev",
-            "platform_type",
-            "location",
-            "network_zone",
-            "ip",
-            "port",
-            "mw",
-            "os_dbms",
+            "hostname",
             "url_or_db_name",
-            "ssl_domain",
-            "cert_format",
+            "server_type",
             "remark1",
             "remark2",
         ]
         rename_map = {
-            "component_mgmt_no": "컴포넌트번호",
+            "component_mgmt_no": "컴포넌트 번호",
             "hostname": "Hostname",
-            "system_name": "시스템명",
-            "server_type": "서버 구분",
-            "operation_dev": "운영/개발",
-            "platform_type": "플랫폼 구분",
-            "location": "위치",
-            "network_zone": "네트웍 구분",
-            "ip": "IP",
-            "port": "Port",
-            "mw": "MW",
-            "os_dbms": "OS/DBMS",
-            "url_or_db_name": "URL/DB명",
-            "ssl_domain": "SSL 도메인",
-            "cert_format": "인증서 포맷",
+            "system_name": "서비스명",
+            "server_type": "컴포넌트구분",
+            "url_or_db_name": "컴포넌트명",
             "remark1": "비고1",
             "remark2": "비고2",
         }
@@ -1375,18 +1415,31 @@ def component_item_master_list(request):
             skipped_count = 0
             import_row_errors = {}
             for excel_row_no, (_, row) in enumerate(df.iterrows(), start=2):
-                mgmt_no = str(get_row_value(row, ["component_mgmt_no", "컴포넌트번호", "컴포넌트관리번호"], "")).strip()
-                system_name = str(get_row_value(row, ["system_name", "시스템명"], "")).strip()
+                mgmt_no = str(
+                    get_row_value(
+                        row,
+                        [
+                            "component_mgmt_no",
+                            "컴포넌트번호",
+                            "컴포넌트 번호",
+                            "컴포넌트관리번호",
+                        ],
+                        "",
+                    )
+                ).strip()
+                system_name = str(
+                    get_row_value(row, ["system_name", "시스템명", "서비스명"], "")
+                ).strip()
                 hostname = str(get_row_value(row, ["hostname", "Hostname"], "")).strip()
                 if not system_name and not hostname:
                     skipped_count += 1
                     import_row_errors[f"import_{excel_row_no}"] = (
-                        f"{excel_row_no}행: 필수값 누락: 시스템명, Hostname"
+                        f"{excel_row_no}행: 필수값 누락: 서비스명, Hostname"
                     )
                     continue
                 if not system_name:
                     skipped_count += 1
-                    import_row_errors[f"import_{excel_row_no}"] = f"{excel_row_no}행: 필수값 누락: 시스템명"
+                    import_row_errors[f"import_{excel_row_no}"] = f"{excel_row_no}행: 필수값 누락: 서비스명"
                     continue
                 if not hostname:
                     skipped_count += 1
@@ -1395,41 +1448,33 @@ def component_item_master_list(request):
                 if system_name and not ServiceMaster.objects.filter(name=system_name).exists():
                     skipped_count += 1
                     import_row_errors[f"import_{excel_row_no}"] = (
-                        f"{excel_row_no}행: 서비스 마스터 미등록 시스템명: {system_name}"
+                        f"{excel_row_no}행: 서비스 마스터 미등록 서비스명: {system_name}"
                     )
                     continue
-                server_type = str(get_row_value(row, ["server_type", "서버 구분"], "")).strip()
-                if server_type and server_type not in svr_type_code_set:
-                    skipped_count += 1
-                    import_row_errors[f"import_{excel_row_no}"] = (
-                        f"{excel_row_no}행: 유효하지 않은 서버 구분 코드: {server_type}"
-                    )
-                    continue
-                operation_dev = str(get_row_value(row, ["operation_dev", "운영/개발"], "")).strip()
-                if operation_dev and operation_dev not in devops_code_set:
-                    skipped_count += 1
-                    import_row_errors[f"import_{excel_row_no}"] = (
-                        f"{excel_row_no}행: 유효하지 않은 운영/개발 코드: {operation_dev}"
-                    )
-                    continue
+                url_or_db_name = str(
+                    get_row_value(row, ["url_or_db_name", "URL/DB명", "컴포넌트명"], "")
+                ).strip()
                 defaults = {
                     "hostname": hostname,
                     "system_name": system_name,
-                    "server_type": server_type,
-                    "operation_dev": operation_dev,
-                    "platform_type": str(get_row_value(row, ["platform_type", "플랫폼 구분"], "")).strip(),
-                    "location": str(get_row_value(row, ["location", "위치"], "")).strip(),
-                    "network_zone": str(get_row_value(row, ["network_zone", "네트웍 구분"], "")).strip(),
-                    "ip": (str(get_row_value(row, ["ip", "IP"], "")).strip() or None),
-                    "port": str(get_row_value(row, ["port", "Port"], "")).strip(),
-                    "mw": str(get_row_value(row, ["mw", "MW"], "")).strip(),
-                    "os_dbms": str(get_row_value(row, ["os_dbms", "OS/DBMS"], "")).strip(),
-                    "url_or_db_name": str(get_row_value(row, ["url_or_db_name", "URL/DB명"], "")).strip(),
-                    "ssl_domain": str(get_row_value(row, ["ssl_domain", "SSL 도메인"], "")).strip(),
-                    "cert_format": str(get_row_value(row, ["cert_format", "인증서 포맷"], "")).strip(),
+                    "server_type": code_to_group_name.get(url_or_db_name, "") if url_or_db_name else "",
+                    "url_or_db_name": url_or_db_name,
                     "remark1": str(get_row_value(row, ["remark1", "비고1"], "")).strip(),
                     "remark2": str(get_row_value(row, ["remark2", "비고2"], "")).strip(),
                 }
+                if defaults["url_or_db_name"] and defaults["url_or_db_name"] not in product_code_set:
+                    skipped_count += 1
+                    import_row_errors[f"import_{excel_row_no}"] = (
+                        f"{excel_row_no}행: 컴포넌트명은 등록된 제품·버전 코드만 가능: {defaults['url_or_db_name']}"
+                    )
+                    continue
+                allowed_hosts = hosts_by_service.get(system_name, [])
+                if system_name and hostname and hostname not in allowed_hosts:
+                    skipped_count += 1
+                    import_row_errors[f"import_{excel_row_no}"] = (
+                        f"{excel_row_no}행: 해당 서비스명에 연결된 Hostname이 아닙니다: {hostname}"
+                    )
+                    continue
                 if mgmt_no:
                     existing = ComponentMaster.objects.filter(component_mgmt_no=mgmt_no).first()
                     if existing:
@@ -1461,8 +1506,8 @@ def component_item_master_list(request):
             failed_ids = []
             row_errors = {}
             invalid_system_names = set()
-            invalid_svr_type_codes = set()
-            invalid_devops_codes = set()
+            invalid_product_codes = set()
+            invalid_hostnames = set()
             if deleted_ids:
                 try:
                     ComponentMaster.objects.filter(pk__in=deleted_ids).delete()
@@ -1481,41 +1526,35 @@ def component_item_master_list(request):
                 if system_name and not ServiceMaster.objects.filter(name=system_name).exists():
                     if pk:
                         failed_ids.append(pk)
-                        row_errors[str(pk)] = "서비스 마스터에 등록된 시스템명만 입력 가능합니다."
+                        row_errors[str(pk)] = "서비스 마스터에 등록된 서비스명만 입력 가능합니다."
                     else:
                         invalid_system_names.add(system_name)
                     continue
                 payload = {
                     "hostname": hostname,
                     "system_name": system_name,
-                    "server_type": (row.get("server_type") or "").strip(),
-                    "operation_dev": (row.get("operation_dev") or "").strip(),
-                    "platform_type": (row.get("platform_type") or "").strip(),
-                    "location": (row.get("location") or "").strip(),
-                    "network_zone": (row.get("network_zone") or "").strip(),
-                    "ip": (row.get("ip") or "").strip() or None,
-                    "port": (row.get("port") or "").strip(),
-                    "mw": (row.get("mw") or "").strip(),
-                    "os_dbms": (row.get("os_dbms") or "").strip(),
+                    "server_type": "",
                     "url_or_db_name": (row.get("url_or_db_name") or "").strip(),
-                    "ssl_domain": (row.get("ssl_domain") or "").strip(),
-                    "cert_format": (row.get("cert_format") or "").strip(),
                     "remark1": (row.get("remark1") or "").strip(),
                     "remark2": (row.get("remark2") or "").strip(),
                 }
-                if payload["server_type"] and payload["server_type"] not in svr_type_code_set:
+                if payload["url_or_db_name"] and payload["url_or_db_name"] not in product_code_set:
                     if pk:
                         failed_ids.append(pk)
-                        row_errors[str(pk)] = "유효하지 않은 서버 구분 코드"
+                        row_errors[str(pk)] = "컴포넌트명은 Language·Runtime 등 등록된 코드값만 입력 가능합니다."
                     else:
-                        invalid_svr_type_codes.add(payload["server_type"])
+                        invalid_product_codes.add(payload["url_or_db_name"])
                     continue
-                if payload["operation_dev"] and payload["operation_dev"] not in devops_code_set:
+                payload["server_type"] = code_to_group_name.get(payload["url_or_db_name"], "")
+                allowed_hosts = hosts_by_service.get(system_name, [])
+                if system_name and hostname and hostname not in allowed_hosts:
                     if pk:
                         failed_ids.append(pk)
-                        row_errors[str(pk)] = "유효하지 않은 운영/개발 코드"
+                        row_errors[str(pk)] = (
+                            "선택한 서비스명에 연결된 자산 Hostname만 입력할 수 있습니다."
+                        )
                     else:
-                        invalid_devops_codes.add(payload["operation_dev"])
+                        invalid_hostnames.add(hostname)
                     continue
                 if pk:
                     try:
@@ -1542,23 +1581,23 @@ def component_item_master_list(request):
             if invalid_system_names:
                 messages.error(
                     request,
-                    "서비스 마스터 미등록 시스템명으로 저장할 수 없습니다: " + ", ".join(sorted(invalid_system_names)),
+                    "서비스 마스터 미등록 서비스명으로 저장할 수 없습니다: " + ", ".join(sorted(invalid_system_names)),
                 )
-                row_errors["__global__"] = "서비스 마스터 미등록 시스템명 입력"
-            if invalid_svr_type_codes:
+                row_errors["__global__"] = "서비스 마스터 미등록 서비스명 입력"
+            if invalid_product_codes:
                 messages.error(
                     request,
-                    "유효하지 않은 서버 구분 코드가 포함되어 저장할 수 없습니다: "
-                    + ", ".join(sorted(invalid_svr_type_codes)),
+                    "등록되지 않은 컴포넌트명(제품·버전 코드)이 포함되어 저장할 수 없습니다: "
+                    + ", ".join(sorted(invalid_product_codes)),
                 )
-                row_errors["__global_svr_type__"] = "유효하지 않은 서버 구분 코드 입력"
-            if invalid_devops_codes:
+                row_errors["__global_product__"] = "유효하지 않은 컴포넌트명 코드"
+            if invalid_hostnames:
                 messages.error(
                     request,
-                    "유효하지 않은 운영/개발 코드가 포함되어 저장할 수 없습니다: "
-                    + ", ".join(sorted(invalid_devops_codes)),
+                    "서비스명에 연결된 Hostname이 아닌 값이 포함되어 저장할 수 없습니다: "
+                    + ", ".join(sorted(invalid_hostnames)),
                 )
-                row_errors["__global_devops__"] = "유효하지 않은 운영/개발 코드 입력"
+                row_errors["__global_hostname__"] = "서비스와 연결되지 않은 Hostname"
             request.session["row_errors_component_item"] = row_errors
             return redirect(build_list_redirect(request.path, query=query, page=page, failed_ids=failed_ids))
 
@@ -1575,8 +1614,9 @@ def component_item_master_list(request):
             "row_errors": row_errors,
             "popup_error_summary": summarize_row_errors(row_errors),
             "service_names": list(ServiceMaster.objects.values_list("name", flat=True).order_by("name")),
-            "svr_type_codes": svr_type_codes,
-            "devops_codes": devops_codes,
+            "hosts_by_service": hosts_by_service,
+            "component_product_codes": component_product_codes,
+            "component_code_to_group_name": code_to_group_name,
         },
     )
 

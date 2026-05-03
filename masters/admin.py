@@ -44,6 +44,6 @@ class ComponentAdmin(admin.ModelAdmin):
 
 @admin.register(ComponentMaster)
 class ComponentMasterAdmin(admin.ModelAdmin):
-    search_fields = ("component_mgmt_no", "hostname", "system_name", "server_type", "platform_type", "ip")
-    list_display = ("component_mgmt_no", "hostname", "system_name", "server_type", "operation_dev", "network_zone", "platform_type", "ip")
-    list_filter = ("server_type", "operation_dev", "network_zone", "platform_type")
+    search_fields = ("component_mgmt_no", "hostname", "system_name", "server_type", "url_or_db_name", "remark1", "remark2")
+    list_display = ("component_mgmt_no", "hostname", "system_name", "server_type", "url_or_db_name")
+    list_filter = ("server_type",)
