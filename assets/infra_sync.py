@@ -84,6 +84,7 @@ def copy_component_fields(comp: "Component"):
         "port": comp.port or "",
         "location": comp.location or "",
         "mw": comp.mw or "",
+        "runtime": comp.runtime or "",
         "os_dbms": comp.os_dbms or "",
         "url_or_db_name": comp.url_or_db_name or "",
         "ssl_domain": comp.ssl_domain or "",

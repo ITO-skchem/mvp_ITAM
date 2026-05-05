@@ -19,7 +19,7 @@ class Command(BaseCommand):
             text = (
                 f"[시스템통합] {asset.system_mgmt_no} {asset.service_name} "
                 f"서비스:{asset.service_mgmt_no} 자산:{asset.asset_mgmt_no} "
-                f"HOST:{asset.hostname} IP:{asset.ip or ''} MW:{asset.mw} OS/DBMS:{asset.os_dbms} "
+                f"HOST:{asset.hostname} IP:{asset.ip or ''} MW:{asset.mw} RT:{asset.runtime or ''} OS/DBMS:{asset.os_dbms} "
                 f"URL/DB:{asset.url_or_db_name} 위치:{asset.location} "
                 f"담당:고객사:{asset.customer_owner_name} Appl:{asset.appl_owner_name} 운영:{asset.partner_operator_name} "
                 f"서버담당:{asset.server_owner_name} DB담당:{asset.db_owner_name} "
@@ -38,7 +38,7 @@ class Command(BaseCommand):
         for comp in Component.objects.all():
             text = (
                 f"[자산] {comp.hostname} 시스템명:{comp.system_name} 구분:{comp.server_type} "
-                f"운영개발:{comp.operation_dev} IP:{comp.ip or ''} MW:{comp.mw} OS/DBMS:{comp.os_dbms}"
+                f"운영개발:{comp.operation_dev} IP:{comp.ip or ''} MW:{comp.mw} RT:{comp.runtime or ''} OS/DBMS:{comp.os_dbms}"
             )
             items.append((text, {"type": "component", "id": comp.pk, "name": comp.hostname or comp.asset_mgmt_no}))
 

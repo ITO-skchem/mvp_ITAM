@@ -86,14 +86,16 @@
     }
     #component-table th.language-col,
     #component-table td.language-col,
+    #component-table th.runtime-col,
+    #component-table td.runtime-col,
     #component-table th.framework-col,
     #component-table td.framework-col,
+    #component-table th.middleware-col,
+    #component-table td.middleware-col,
     #component-table th.os-col,
     #component-table td.os-col,
     #component-table th.db-col,
-    #component-table td.db-col,
-    #component-table th.middleware-col,
-    #component-table td.middleware-col {
+    #component-table td.db-col {
         width: 15em;
         min-width: 15em;
         max-width: 15em;
@@ -208,10 +210,11 @@
                     <th class="ip-col">IP</th>
                     <th class="port-col">Port</th>
                     <th class="language-col">Language</th>
+                    <th class="runtime-col">Runtime</th>
                     <th class="framework-col">Framework</th>
+                    <th class="middleware-col">Middleware</th>
                     <th class="os-col">OS</th>
                     <th class="db-col">DB</th>
-                    <th class="middleware-col">Middleware</th>
                     <th>URL/DB명</th>
                     <th class="ssl-domain-col">SSL 도메인</th>
                     <th class="cert-format-col">인증서 포맷</th>
@@ -239,10 +242,11 @@
                     <td class="ip-col"><input type="text" data-field="ip" value="{{ c.ip }}"></td>
                     <td class="port-col"><input type="text" data-field="port" value="{{ c.port }}"></td>
                     <td class="language-col"><input type="text" data-field="mw" value="{{ c.mw }}"></td>
+                    <td class="runtime-col"><input type="text" data-field="runtime" value="{{ c.runtime }}"></td>
                     <td class="framework-col"><input type="text" data-field="os_dbms" value="{{ c.os_dbms }}"></td>
+                    <td class="middleware-col"><input type="text" data-field="middleware" value="{{ c.middleware }}"></td>
                     <td class="os-col"><input type="text" data-field="os" value="{{ c.os }}"></td>
                     <td class="db-col"><input type="text" data-field="db" value="{{ c.db }}"></td>
-                    <td class="middleware-col"><input type="text" data-field="middleware" value="{{ c.middleware }}"></td>
                     <td><input type="text" data-field="url_or_db_name" value="{{ c.url_or_db_name }}"></td>
                     <td class="ssl-domain-col"><input type="text" data-field="ssl_domain" value="{{ c.ssl_domain }}"></td>
                     <td class="cert-format-col"><input type="text" data-field="cert_format" value="{{ c.cert_format }}"></td>
@@ -251,7 +255,7 @@
                     <td style="color:#b10000;">{{ row_errors|lookup:c.id }}</td>
                 </tr>
                 {% empty %}
-                <tr><td colspan="22">등록된 자산 마스터가 없습니다.</td></tr>
+                <tr><td colspan="23">등록된 자산 마스터가 없습니다.</td></tr>
                 {% endfor %}
             </tbody>
         </table>

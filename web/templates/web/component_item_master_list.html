@@ -110,7 +110,7 @@
 <datalist id="component-product-code-list-filtered"></datalist>
 {{ hosts_by_service|json_script:"hosts-by-service-data" }}
 {{ component_product_codes|json_script:"component-product-codes-data" }}
-{{ component_code_to_group_name|json_script:"component-code-to-group-data" }}
+{{ component_display_name_to_group_name|json_script:"component-display-name-to-group-data" }}
 <form id="component-item-form" class="list-form" method="post" enctype="multipart/form-data">
     {% csrf_token %}
     <input type="hidden" name="action" id="component-item-action" value="save">
@@ -142,7 +142,7 @@
                     </td>
                     <td class="sticky-col service-name-col"><input type="text" data-field="system_name" list="service-name-list" value="{{ c.system_name }}"></td>
                     <td class="sticky-col hostname-col sticky-boundary"><input type="text" data-field="hostname" list="hostname-code-list-filtered" value="{{ c.hostname }}" autocomplete="off"></td>
-                    <td class="component-name-col"><input type="text" data-field="url_or_db_name" list="component-product-code-list-filtered" value="{{ c.url_or_db_name }}" autocomplete="off"></td>
+                    <td class="component-name-col"><input type="text" data-field="url_or_db_name" list="component-product-code-list-filtered" value="{{ c.component_display_name }}" autocomplete="off"></td>
                     <td class="server-type-col"><input type="text" readonly class="input-fk-readonly" data-field="server_type" value="{{ c.server_type }}"></td>
                     <td><input type="text" data-field="remark1" value="{{ c.remark1 }}"></td>
                     <td><input type="text" data-field="remark2" value="{{ c.remark2 }}"></td>
@@ -203,7 +203,9 @@
     const deletedIds = [];
     const hostsByService = JSON.parse(document.getElementById("hosts-by-service-data").textContent);
     const productCodes = JSON.parse(document.getElementById("component-product-codes-data").textContent);
-    const codeToGroupName = JSON.parse(document.getElementById("component-code-to-group-data").textContent);
+    const displayNameToGroupName = JSON.parse(
+        document.getElementById("component-display-name-to-group-data").textContent
+    );
     let isComposing = false;
     const escapeAttr = (s) => String(s).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
     const usedKeys = new Set(
@@ -264,7 +266,7 @@
         });
         const errCell = row.querySelector("td:last-child");
         if (errCell && errCell.style) errCell.textContent = "";
-        syncServerTypeFromProductCode(row);
+        syncServerTypeFromProductDisplayName(row);
         return row;
     };
 
@@ -284,13 +286,24 @@
         if (rowCheck) rowCheck.checked = true;
     };
 
-    const syncServerTypeFromProductCode = (tr) => {
+    /** 입력이 코드명 또는(과거 데이터 호환) 코드값이면 해당 productCodes 행 */
+    const resolveProductRow = (raw) => {
+        const s = (raw || "").trim();
+        if (!s) return null;
+        const sl = s.toLowerCase();
+        return (
+            productCodes.find((r) => (r.name || "").toLowerCase() === sl) ||
+            productCodes.find((r) => (r.code || "").toLowerCase() === sl) ||
+            null
+        );
+    };
+
+    const syncServerTypeFromProductDisplayName = (tr) => {
         const pe = tr?.querySelector('[data-field="url_or_db_name"]');
         const se = tr?.querySelector('[data-field="server_type"]');
         if (!pe || !se) return;
-        const code = (pe.value || "").trim();
-        se.value =
-            code && Object.prototype.hasOwnProperty.call(codeToGroupName, code) ? codeToGroupName[code] : "";
+        const row = resolveProductRow(pe.value || "");
+        se.value = row && displayNameToGroupName[row.name] !== undefined ? displayNameToGroupName[row.name] : "";
     };
 
     const getRowHosts = (tr) => {
@@ -377,16 +390,17 @@
         const k = (keyword || "").toLowerCase();
         const matches = k
             ? productCodes.filter(
-                  (r) => r.code.toLowerCase().includes(k) || r.name.toLowerCase().includes(k)
+                  (r) =>
+                      (r.name || "").toLowerCase().includes(k) || (r.code || "").toLowerCase().includes(k)
               )
             : productCodes;
-        dl.innerHTML = matches.map((r) => `<option value="${escapeAttr(r.code)}"></option>`).join("");
+        dl.innerHTML = matches.map((r) => `<option value="${escapeAttr(r.name)}"></option>`).join("");
     };
     const findProductPrefixRow = (keyword) => {
         const k = (keyword || "").toLowerCase();
         return (
-            productCodes.find((r) => r.code.toLowerCase().startsWith(k)) ||
-            productCodes.find((r) => r.name.toLowerCase().startsWith(k)) ||
+            productCodes.find((r) => (r.name || "").toLowerCase().startsWith(k)) ||
+            productCodes.find((r) => (r.code || "").toLowerCase().startsWith(k)) ||
             null
         );
     };
@@ -396,19 +410,19 @@
         const keyword = target.value || "";
         updateProductDatalist(keyword);
         if (!keyword) {
-            syncServerTypeFromProductCode(tr);
+            syncServerTypeFromProductDisplayName(tr);
             return false;
         }
         const row = findProductPrefixRow(keyword);
         if (!row) {
-            syncServerTypeFromProductCode(tr);
+            syncServerTypeFromProductDisplayName(tr);
             return false;
         }
         if (target.setSelectionRange && target === document.activeElement) {
-            target.value = row.code;
-            target.setSelectionRange(keyword.length, row.code.length);
+            target.value = row.name;
+            target.setSelectionRange(keyword.length, row.name.length);
         }
-        syncServerTypeFromProductCode(tr);
+        syncServerTypeFromProductDisplayName(tr);
         return true;
     };
     const commitProductSuggestion = (target) => {
@@ -416,40 +430,40 @@
         if (isComposing) return false;
         const typed = (target.value || "").trim();
         if (!typed) {
-            syncServerTypeFromProductCode(tr);
+            syncServerTypeFromProductDisplayName(tr);
             return false;
         }
         const tl = typed.toLowerCase();
-        const exact = productCodes.find((r) => r.code.toLowerCase() === tl);
+        const exact = resolveProductRow(typed);
         if (exact) {
-            if (target.value !== exact.code) {
-                target.value = exact.code;
+            if (target.value !== exact.name) {
+                target.value = exact.name;
                 markChecked(target);
-                syncServerTypeFromProductCode(tr);
+                syncServerTypeFromProductDisplayName(tr);
                 return true;
             }
-            syncServerTypeFromProductCode(tr);
+            syncServerTypeFromProductDisplayName(tr);
             return false;
         }
         const cand = productCodes.filter(
-            (r) => r.code.toLowerCase().includes(tl) || r.name.toLowerCase().includes(tl)
+            (r) => (r.name || "").toLowerCase().includes(tl) || (r.code || "").toLowerCase().includes(tl)
         );
         if (cand.length === 1) {
-            target.value = cand[0].code;
+            target.value = cand[0].name;
             markChecked(target);
-            syncServerTypeFromProductCode(tr);
+            syncServerTypeFromProductDisplayName(tr);
             return true;
         }
         const pref =
-            productCodes.find((r) => r.code.toLowerCase().startsWith(tl)) ||
-            productCodes.find((r) => r.name.toLowerCase().startsWith(tl));
+            productCodes.find((r) => (r.name || "").toLowerCase().startsWith(tl)) ||
+            productCodes.find((r) => (r.code || "").toLowerCase().startsWith(tl));
         if (pref) {
-            target.value = pref.code;
+            target.value = pref.name;
             markChecked(target);
-            syncServerTypeFromProductCode(tr);
+            syncServerTypeFromProductDisplayName(tr);
             return true;
         }
-        syncServerTypeFromProductCode(tr);
+        syncServerTypeFromProductDisplayName(tr);
         return false;
     };
 
@@ -473,7 +487,7 @@
         if (e.target.dataset.field === "url_or_db_name") {
             if ((e.inputType || "").startsWith("delete")) {
                 updateProductDatalist(e.target.value || "");
-                syncServerTypeFromProductCode(tr);
+                syncServerTypeFromProductDisplayName(tr);
                 return;
             }
             showProductSuggestion(e.target);
@@ -486,7 +500,7 @@
         if (!e.target.matches("[data-field]")) return;
         markChecked(e.target);
         if (e.target.dataset.field === "url_or_db_name") {
-            syncServerTypeFromProductCode(e.target.closest("tr"));
+            syncServerTypeFromProductDisplayName(e.target.closest("tr"));
         }
     });
     table.addEventListener("compositionstart", (e) => {
@@ -595,7 +609,7 @@
         }
     }, true);
     updateProductDatalist("");
-    dataRowsInTbody().forEach((tr) => syncServerTypeFromProductCode(tr));
+    dataRowsInTbody().forEach((tr) => syncServerTypeFromProductDisplayName(tr));
 
     document.getElementById("component-item-save-btn").addEventListener("click", () => {
         const rows = [...table.querySelectorAll("tbody tr")]

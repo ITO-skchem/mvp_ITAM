@@ -129,6 +129,7 @@ class Component(models.Model):
     ip = models.GenericIPAddressField("IP", null=True, blank=True)
     port = models.CharField("Port", max_length=20, blank=True)
     mw = models.CharField("MW", max_length=100, blank=True)
+    runtime = models.CharField("Runtime", max_length=100, blank=True)
     os_dbms = models.CharField("OS/DBMS", max_length=200, blank=True)
     os = models.CharField("OS", max_length=100, blank=True)
     db = models.CharField("DB", max_length=100, blank=True)

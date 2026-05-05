@@ -17,7 +17,7 @@ from assets.models import InfraAsset
 from core.models import AuditLog, Code
 from masters.models import Component, ComponentMaster, PersonMaster, ServiceMaster
 
-# 컴포넌트 마스터 — 컴포넌트명(제품+버전 코드) 선택용
+# 컴포넌트 마스터 — 컴포넌트명(코드 그룹의 Code.name, 제품명+버전) 선택용
 COMPONENT_PRODUCT_CODE_GROUPS = (
     "language",
     "runtime",
@@ -45,36 +45,61 @@ def build_hosts_by_service():
     return mapping
 
 
-def build_component_product_codes():
-    """7개 코드 그룹에서 code·name 목록(코드 기준 중복 제거, 그룹 순·정렬 유지)."""
-    out = []
-    seen = set()
+def build_component_master_product_bundle():
+    """컴포넌트 마스터: 제품 코드 목록, 코드값→코드명, 코드명→그룹 표시명."""
+    product_codes = []
+    seen_code = set()
+    code_to_name = {}
+    name_to_group = {}
+    lower_name_to_canonical = {}
+    names_set = set()
+    codes_set = set()
     for gk in COMPONENT_PRODUCT_CODE_GROUPS:
         qs = (
             Code.objects.filter(group__key=gk, group__is_active=True, is_active=True)
-            .order_by("sort_order", "code")
-            .values_list("code", "name")
-        )
-        for code, name in qs:
-            if code in seen:
-                continue
-            seen.add(code)
-            out.append({"code": code, "name": name})
-    return out
-
-
-def build_component_code_to_group_name():
-    """컴포넌트명(코드값) → 소속 코드그룹 표시명(CodeGroup.name). 동일 code 중복 시 그룹 순서상 먼저인 쪽."""
-    mapping = {}
-    for gk in COMPONENT_PRODUCT_CODE_GROUPS:
-        for row in (
-            Code.objects.filter(group__key=gk, group__is_active=True, is_active=True)
             .select_related("group")
             .order_by("sort_order", "code")
-        ):
-            if row.code not in mapping:
-                mapping[row.code] = row.group.name
-    return mapping
+        )
+        for row in qs:
+            codes_set.add(row.code)
+            code_to_name[row.code] = row.name
+            names_set.add(row.name)
+            lower_name_to_canonical[row.name.lower()] = row.name
+            if row.name not in name_to_group:
+                name_to_group[row.name] = row.group.name
+            if row.code in seen_code:
+                continue
+            seen_code.add(row.code)
+            product_codes.append({"code": row.code, "name": row.name, "group": row.group.name})
+    return {
+        "product_codes": product_codes,
+        "code_to_name": code_to_name,
+        "name_to_group": name_to_group,
+        "lower_name_to_canonical": lower_name_to_canonical,
+        "names_set": names_set,
+        "codes_set": codes_set,
+    }
+
+
+def build_component_product_codes():
+    """7개 코드 그룹에서 code·name·group 목록(코드 기준 중복 제거, 그룹 순·정렬 유지)."""
+    return build_component_master_product_bundle()["product_codes"]
+
+
+def resolve_component_master_product_input(raw, bundle):
+    """입력값(코드명 또는 과거 코드값)을 DB에 저장할 표준 코드명으로 변환. (canonical_name, ok)."""
+    s = (raw or "").strip()
+    if not s:
+        return "", True
+    if s in bundle["codes_set"]:
+        name = bundle["code_to_name"].get(s)
+        return (name, True) if name else (None, False)
+    if s in bundle["names_set"]:
+        return s, True
+    key = s.lower()
+    if key in bundle["lower_name_to_canonical"]:
+        return bundle["lower_name_to_canonical"][key], True
+    return None, False
 
 
 PERSON_ROLE_CODES = [
@@ -365,6 +390,7 @@ def asset_list(request):
             "port",
             "location",
             "mw",
+            "runtime",
             "os_dbms",
             "url_or_db_name",
             "ssl_domain",
@@ -389,6 +415,7 @@ def asset_list(request):
             "port": "Port",
             "location": "위치",
             "mw": "MW",
+            "runtime": "Runtime",
             "os_dbms": "OS/DBMS",
             "url_or_db_name": "URL/DB명",
             "ssl_domain": "SSL 도메인",
@@ -1021,10 +1048,11 @@ def component_master_list(request):
             "ip",
             "port",
             "mw",
+            "runtime",
             "os_dbms",
+            "middleware",
             "os",
             "db",
-            "middleware",
             "url_or_db_name",
             "ssl_domain",
             "cert_format",
@@ -1043,10 +1071,11 @@ def component_master_list(request):
             "ip": "IP",
             "port": "Port",
             "mw": "Language",
+            "runtime": "Runtime",
             "os_dbms": "Framework",
+            "middleware": "Middleware",
             "os": "OS",
             "db": "DB",
-            "middleware": "Middleware",
             "url_or_db_name": "URL/DB명",
             "ssl_domain": "SSL 도메인",
             "cert_format": "인증서 포맷",
@@ -1143,10 +1172,11 @@ def component_master_list(request):
                     "ip": (str(get_row_value(row, ["ip", "IP"], "")).strip() or None),
                     "port": str(get_row_value(row, ["port", "Port"], "")).strip(),
                     "mw": str(get_row_value(row, ["mw", "Language", "MW"], "")).strip(),
+                    "runtime": str(get_row_value(row, ["runtime", "Runtime"], "")).strip(),
                     "os_dbms": str(get_row_value(row, ["os_dbms", "Framework", "OS/DBMS"], "")).strip(),
+                    "middleware": str(get_row_value(row, ["middleware", "Middleware"], "")).strip(),
                     "os": str(get_row_value(row, ["os", "OS"], "")).strip(),
                     "db": str(get_row_value(row, ["db", "DB"], "")).strip(),
-                    "middleware": str(get_row_value(row, ["middleware", "Middleware"], "")).strip(),
                     "url_or_db_name": str(get_row_value(row, ["url_or_db_name", "URL/DB명"], "")).strip(),
                     "ssl_domain": str(get_row_value(row, ["ssl_domain", "SSL 도메인"], "")).strip(),
                     "cert_format": str(get_row_value(row, ["cert_format", "인증서 포맷"], "")).strip(),
@@ -1223,10 +1253,11 @@ def component_master_list(request):
                     "ip": (row.get("ip") or "").strip() or None,
                     "port": (row.get("port") or "").strip(),
                     "mw": (row.get("mw") or "").strip(),
+                    "runtime": (row.get("runtime") or "").strip(),
                     "os_dbms": (row.get("os_dbms") or "").strip(),
+                    "middleware": (row.get("middleware") or "").strip(),
                     "os": (row.get("os") or "").strip(),
                     "db": (row.get("db") or "").strip(),
-                    "middleware": (row.get("middleware") or "").strip(),
                     "url_or_db_name": (row.get("url_or_db_name") or "").strip(),
                     "ssl_domain": (row.get("ssl_domain") or "").strip(),
                     "cert_format": (row.get("cert_format") or "").strip(),
@@ -1376,9 +1407,8 @@ def component_item_master_list(request):
     failed_ids = {int(x) for x in request.GET.get("failed_ids", "").split(",") if x.isdigit()}
     row_errors = request.session.pop("row_errors_component_item", {})
     hosts_by_service = build_hosts_by_service()
-    component_product_codes = build_component_product_codes()
-    product_code_set = {p["code"] for p in component_product_codes}
-    code_to_group_name = build_component_code_to_group_name()
+    product_bundle = build_component_master_product_bundle()
+    component_product_codes = product_bundle["product_codes"]
     qs = ComponentMaster.objects.all().order_by("component_mgmt_no")
     if query:
         qs = qs.filter(build_model_text_search_q(ComponentMaster, query))
@@ -1451,21 +1481,26 @@ def component_item_master_list(request):
                         f"{excel_row_no}행: 서비스 마스터 미등록 서비스명: {system_name}"
                     )
                     continue
-                url_or_db_name = str(
+                url_or_db_name_raw = str(
                     get_row_value(row, ["url_or_db_name", "URL/DB명", "컴포넌트명"], "")
                 ).strip()
+                canon_name, name_ok = resolve_component_master_product_input(
+                    url_or_db_name_raw, product_bundle
+                )
                 defaults = {
                     "hostname": hostname,
                     "system_name": system_name,
-                    "server_type": code_to_group_name.get(url_or_db_name, "") if url_or_db_name else "",
-                    "url_or_db_name": url_or_db_name,
+                    "server_type": product_bundle["name_to_group"].get(canon_name, "")
+                    if canon_name
+                    else "",
+                    "url_or_db_name": canon_name if name_ok else "",
                     "remark1": str(get_row_value(row, ["remark1", "비고1"], "")).strip(),
                     "remark2": str(get_row_value(row, ["remark2", "비고2"], "")).strip(),
                 }
-                if defaults["url_or_db_name"] and defaults["url_or_db_name"] not in product_code_set:
+                if url_or_db_name_raw and not name_ok:
                     skipped_count += 1
                     import_row_errors[f"import_{excel_row_no}"] = (
-                        f"{excel_row_no}행: 컴포넌트명은 등록된 제품·버전 코드만 가능: {defaults['url_or_db_name']}"
+                        f"{excel_row_no}행: 컴포넌트명은 등록된 코드명(또는 이전 코드값)만 가능: {url_or_db_name_raw}"
                     )
                     continue
                 allowed_hosts = hosts_by_service.get(system_name, [])
@@ -1530,22 +1565,26 @@ def component_item_master_list(request):
                     else:
                         invalid_system_names.add(system_name)
                     continue
+                raw_name = (row.get("url_or_db_name") or "").strip()
+                canon_name, name_ok = resolve_component_master_product_input(raw_name, product_bundle)
                 payload = {
                     "hostname": hostname,
                     "system_name": system_name,
                     "server_type": "",
-                    "url_or_db_name": (row.get("url_or_db_name") or "").strip(),
+                    "url_or_db_name": canon_name if name_ok else "",
                     "remark1": (row.get("remark1") or "").strip(),
                     "remark2": (row.get("remark2") or "").strip(),
                 }
-                if payload["url_or_db_name"] and payload["url_or_db_name"] not in product_code_set:
+                if raw_name and not name_ok:
                     if pk:
                         failed_ids.append(pk)
-                        row_errors[str(pk)] = "컴포넌트명은 Language·Runtime 등 등록된 코드값만 입력 가능합니다."
+                        row_errors[str(pk)] = (
+                            "컴포넌트명은 Language·Runtime 등에 등록된 코드명만 입력 가능합니다."
+                        )
                     else:
-                        invalid_product_codes.add(payload["url_or_db_name"])
+                        invalid_product_codes.add(raw_name)
                     continue
-                payload["server_type"] = code_to_group_name.get(payload["url_or_db_name"], "")
+                payload["server_type"] = product_bundle["name_to_group"].get(payload["url_or_db_name"], "")
                 allowed_hosts = hosts_by_service.get(system_name, [])
                 if system_name and hostname and hostname not in allowed_hosts:
                     if pk:
@@ -1587,10 +1626,10 @@ def component_item_master_list(request):
             if invalid_product_codes:
                 messages.error(
                     request,
-                    "등록되지 않은 컴포넌트명(제품·버전 코드)이 포함되어 저장할 수 없습니다: "
+                    "등록되지 않은 컴포넌트명(코드명)이 포함되어 저장할 수 없습니다: "
                     + ", ".join(sorted(invalid_product_codes)),
                 )
-                row_errors["__global_product__"] = "유효하지 않은 컴포넌트명 코드"
+                row_errors["__global_product__"] = "유효하지 않은 컴포넌트명"
             if invalid_hostnames:
                 messages.error(
                     request,
@@ -1603,6 +1642,12 @@ def component_item_master_list(request):
 
     paginator = Paginator(qs, 100)
     page_obj = paginator.get_page(request.GET.get("page"))
+    for item in page_obj.object_list:
+        canon, ok = resolve_component_master_product_input(item.url_or_db_name or "", product_bundle)
+        if ok:
+            setattr(item, "component_display_name", canon or "")
+        else:
+            setattr(item, "component_display_name", item.url_or_db_name or "")
     return render(
         request,
         "web/component_item_master_list.html",
@@ -1616,7 +1661,7 @@ def component_item_master_list(request):
             "service_names": list(ServiceMaster.objects.values_list("name", flat=True).order_by("name")),
             "hosts_by_service": hosts_by_service,
             "component_product_codes": component_product_codes,
-            "component_code_to_group_name": code_to_group_name,
+            "component_display_name_to_group_name": product_bundle["name_to_group"],
         },
     )
 
