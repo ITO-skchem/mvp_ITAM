@@ -71,6 +71,25 @@ def build_component_master_product_bundle():
                 continue
             seen_code.add(row.code)
             product_codes.append({"code": row.code, "name": row.name, "group": row.group.name})
+    # UI 드롭다운/자동완성 정렬: 알파벳(A-Z) -> 숫자 -> 특수문자
+    def _sort_bucket(name):
+        s = (name or "").strip()
+        if not s:
+            return 3
+        ch = s[0]
+        if ch.isalpha():
+            return 0
+        if ch.isdigit():
+            return 1
+        return 2
+
+    product_codes.sort(
+        key=lambda item: (
+            _sort_bucket(item.get("name")),
+            (item.get("name") or "").lower(),
+            item.get("code") or "",
+        )
+    )
     return {
         "product_codes": product_codes,
         "code_to_name": code_to_name,
@@ -84,6 +103,29 @@ def build_component_master_product_bundle():
 def build_component_product_codes():
     """7개 코드 그룹에서 code·name·group 목록(코드 기준 중복 제거, 그룹 순·정렬 유지)."""
     return build_component_master_product_bundle()["product_codes"]
+
+
+def build_component_group_display_names(group_key):
+    """컴포넌트 그룹별 표시명(Code.name) 목록."""
+    names = list(
+        Code.objects.filter(group__key=group_key, group__is_active=True, is_active=True)
+        .values_list("name", flat=True)
+        .distinct()
+    )
+
+    def _sort_bucket(name):
+        s = (name or "").strip()
+        if not s:
+            return 3
+        ch = s[0]
+        if ch.isalpha():
+            return 0
+        if ch.isdigit():
+            return 1
+        return 2
+
+    names.sort(key=lambda name: (_sort_bucket(name), (name or "").lower()))
+    return names
 
 
 def resolve_component_master_product_input(raw, bundle):
@@ -1030,6 +1072,18 @@ def component_master_list(request):
     infra_loc_code_set = set(infra_loc_codes)
     network_zone_codes = build_code_values("network_zone")
     network_zone_code_set = set(network_zone_codes)
+    language_names = build_component_group_display_names("language")
+    runtime_names = build_component_group_display_names("runtime")
+    framework_names = build_component_group_display_names("framework")
+    middleware_names = build_component_group_display_names("middleware")
+    os_names = build_component_group_display_names("os")
+    db_names = build_component_group_display_names("db")
+    language_name_set = set(language_names)
+    runtime_name_set = set(runtime_names)
+    framework_name_set = set(framework_names)
+    middleware_name_set = set(middleware_names)
+    os_name_set = set(os_names)
+    db_name_set = set(db_names)
     aws_location_code = "AWS"
     qs = Component.objects.all().order_by("asset_mgmt_no")
     if query:
@@ -1161,6 +1215,48 @@ def component_master_list(request):
                         f"{excel_row_no}행: 인프라 구분이 AWS가 아니면 위치는 AWS를 선택할 수 없습니다."
                     )
                     continue
+                language_val = str(get_row_value(row, ["mw", "Language", "MW"], "")).strip()
+                runtime_val = str(get_row_value(row, ["runtime", "Runtime"], "")).strip()
+                framework_val = str(get_row_value(row, ["os_dbms", "Framework", "OS/DBMS"], "")).strip()
+                middleware_val = str(get_row_value(row, ["middleware", "Middleware"], "")).strip()
+                os_val = str(get_row_value(row, ["os", "OS"], "")).strip()
+                db_val = str(get_row_value(row, ["db", "DB"], "")).strip()
+                if language_val and language_val not in language_name_set:
+                    skipped_count += 1
+                    import_row_errors[f"import_{excel_row_no}"] = (
+                        f"{excel_row_no}행: Language는 language 그룹의 등록값만 입력 가능합니다: {language_val}"
+                    )
+                    continue
+                if runtime_val and runtime_val not in runtime_name_set:
+                    skipped_count += 1
+                    import_row_errors[f"import_{excel_row_no}"] = (
+                        f"{excel_row_no}행: Runtime은 runtime 그룹의 등록값만 입력 가능합니다: {runtime_val}"
+                    )
+                    continue
+                if framework_val and framework_val not in framework_name_set:
+                    skipped_count += 1
+                    import_row_errors[f"import_{excel_row_no}"] = (
+                        f"{excel_row_no}행: Framework는 framework 그룹의 등록값만 입력 가능합니다: {framework_val}"
+                    )
+                    continue
+                if middleware_val and middleware_val not in middleware_name_set:
+                    skipped_count += 1
+                    import_row_errors[f"import_{excel_row_no}"] = (
+                        f"{excel_row_no}행: Middleware는 middleware 그룹의 등록값만 입력 가능합니다: {middleware_val}"
+                    )
+                    continue
+                if os_val and os_val not in os_name_set:
+                    skipped_count += 1
+                    import_row_errors[f"import_{excel_row_no}"] = (
+                        f"{excel_row_no}행: OS는 os 그룹의 등록값만 입력 가능합니다: {os_val}"
+                    )
+                    continue
+                if db_val and db_val not in db_name_set:
+                    skipped_count += 1
+                    import_row_errors[f"import_{excel_row_no}"] = (
+                        f"{excel_row_no}행: DB는 db 그룹의 등록값만 입력 가능합니다: {db_val}"
+                    )
+                    continue
                 defaults = {
                     "hostname": hostname,
                     "system_name": system_name,
@@ -1171,12 +1267,12 @@ def component_master_list(request):
                     "network_zone": network_zone,
                     "ip": (str(get_row_value(row, ["ip", "IP"], "")).strip() or None),
                     "port": str(get_row_value(row, ["port", "Port"], "")).strip(),
-                    "mw": str(get_row_value(row, ["mw", "Language", "MW"], "")).strip(),
-                    "runtime": str(get_row_value(row, ["runtime", "Runtime"], "")).strip(),
-                    "os_dbms": str(get_row_value(row, ["os_dbms", "Framework", "OS/DBMS"], "")).strip(),
-                    "middleware": str(get_row_value(row, ["middleware", "Middleware"], "")).strip(),
-                    "os": str(get_row_value(row, ["os", "OS"], "")).strip(),
-                    "db": str(get_row_value(row, ["db", "DB"], "")).strip(),
+                    "mw": language_val,
+                    "runtime": runtime_val,
+                    "os_dbms": framework_val,
+                    "middleware": middleware_val,
+                    "os": os_val,
+                    "db": db_val,
                     "url_or_db_name": str(get_row_value(row, ["url_or_db_name", "URL/DB명"], "")).strip(),
                     "ssl_domain": str(get_row_value(row, ["ssl_domain", "SSL 도메인"], "")).strip(),
                     "cert_format": str(get_row_value(row, ["cert_format", "인증서 포맷"], "")).strip(),
@@ -1220,6 +1316,12 @@ def component_master_list(request):
             invalid_infra_loc_codes = set()
             invalid_aws_dependency_rows = set()
             invalid_network_zone_codes = set()
+            invalid_language_values = set()
+            invalid_runtime_values = set()
+            invalid_framework_values = set()
+            invalid_middleware_values = set()
+            invalid_os_values = set()
+            invalid_db_values = set()
             if deleted_ids:
                 try:
                     Component.objects.filter(pk__in=deleted_ids).delete()
@@ -1309,6 +1411,48 @@ def component_master_list(request):
                     else:
                         invalid_aws_dependency_rows.add("location=AWS")
                     continue
+                if payload["mw"] and payload["mw"] not in language_name_set:
+                    if pk:
+                        failed_ids.append(pk)
+                        row_errors[str(pk)] = "Language는 language 그룹의 등록값만 입력 가능합니다."
+                    else:
+                        invalid_language_values.add(payload["mw"])
+                    continue
+                if payload["runtime"] and payload["runtime"] not in runtime_name_set:
+                    if pk:
+                        failed_ids.append(pk)
+                        row_errors[str(pk)] = "Runtime은 runtime 그룹의 등록값만 입력 가능합니다."
+                    else:
+                        invalid_runtime_values.add(payload["runtime"])
+                    continue
+                if payload["os_dbms"] and payload["os_dbms"] not in framework_name_set:
+                    if pk:
+                        failed_ids.append(pk)
+                        row_errors[str(pk)] = "Framework는 framework 그룹의 등록값만 입력 가능합니다."
+                    else:
+                        invalid_framework_values.add(payload["os_dbms"])
+                    continue
+                if payload["middleware"] and payload["middleware"] not in middleware_name_set:
+                    if pk:
+                        failed_ids.append(pk)
+                        row_errors[str(pk)] = "Middleware는 middleware 그룹의 등록값만 입력 가능합니다."
+                    else:
+                        invalid_middleware_values.add(payload["middleware"])
+                    continue
+                if payload["os"] and payload["os"] not in os_name_set:
+                    if pk:
+                        failed_ids.append(pk)
+                        row_errors[str(pk)] = "OS는 os 그룹의 등록값만 입력 가능합니다."
+                    else:
+                        invalid_os_values.add(payload["os"])
+                    continue
+                if payload["db"] and payload["db"] not in db_name_set:
+                    if pk:
+                        failed_ids.append(pk)
+                        row_errors[str(pk)] = "DB는 db 그룹의 등록값만 입력 가능합니다."
+                    else:
+                        invalid_db_values.add(payload["db"])
+                    continue
                 if pk:
                     try:
                         comp = Component.objects.get(pk=pk)
@@ -1374,6 +1518,48 @@ def component_master_list(request):
                     + ", ".join(sorted(invalid_network_zone_codes)),
                 )
                 row_errors["__global_network_zone__"] = "유효하지 않은 네트웍 구분 코드 입력"
+            if invalid_language_values:
+                messages.error(
+                    request,
+                    "Language는 language 그룹 등록값만 입력할 수 있습니다: "
+                    + ", ".join(sorted(invalid_language_values)),
+                )
+                row_errors["__global_language__"] = "유효하지 않은 Language 입력"
+            if invalid_runtime_values:
+                messages.error(
+                    request,
+                    "Runtime은 runtime 그룹 등록값만 입력할 수 있습니다: "
+                    + ", ".join(sorted(invalid_runtime_values)),
+                )
+                row_errors["__global_runtime__"] = "유효하지 않은 Runtime 입력"
+            if invalid_framework_values:
+                messages.error(
+                    request,
+                    "Framework는 framework 그룹 등록값만 입력할 수 있습니다: "
+                    + ", ".join(sorted(invalid_framework_values)),
+                )
+                row_errors["__global_framework__"] = "유효하지 않은 Framework 입력"
+            if invalid_middleware_values:
+                messages.error(
+                    request,
+                    "Middleware는 middleware 그룹 등록값만 입력할 수 있습니다: "
+                    + ", ".join(sorted(invalid_middleware_values)),
+                )
+                row_errors["__global_middleware__"] = "유효하지 않은 Middleware 입력"
+            if invalid_os_values:
+                messages.error(
+                    request,
+                    "OS는 os 그룹 등록값만 입력할 수 있습니다: "
+                    + ", ".join(sorted(invalid_os_values)),
+                )
+                row_errors["__global_os__"] = "유효하지 않은 OS 입력"
+            if invalid_db_values:
+                messages.error(
+                    request,
+                    "DB는 db 그룹 등록값만 입력할 수 있습니다: "
+                    + ", ".join(sorted(invalid_db_values)),
+                )
+                row_errors["__global_db__"] = "유효하지 않은 DB 입력"
             request.session["row_errors_component"] = row_errors
             return redirect(build_list_redirect(request.path, query=query, page=page, failed_ids=failed_ids))
 
@@ -1395,6 +1581,12 @@ def component_master_list(request):
             "infra_type_codes": infra_type_codes,
             "infra_loc_codes": infra_loc_codes,
             "network_zone_codes": network_zone_codes,
+            "language_names": language_names,
+            "runtime_names": runtime_names,
+            "framework_names": framework_names,
+            "middleware_names": middleware_names,
+            "os_names": os_names,
+            "db_names": db_names,
         },
     )
 

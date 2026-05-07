@@ -189,6 +189,12 @@
     {% endfor %}
 </datalist>
 <datalist id="network-zone-code-list-filtered"></datalist>
+<datalist id="language-name-list-filtered"></datalist>
+<datalist id="runtime-name-list-filtered"></datalist>
+<datalist id="framework-name-list-filtered"></datalist>
+<datalist id="middleware-name-list-filtered"></datalist>
+<datalist id="os-name-list-filtered"></datalist>
+<datalist id="db-name-list-filtered"></datalist>
 <form id="component-form" class="list-form" method="post" enctype="multipart/form-data">
     {% csrf_token %}
     <input type="hidden" name="action" id="component-action" value="save">
@@ -241,12 +247,12 @@
                     <td class="network-zone-col"><input type="text" data-field="network_zone" list="network-zone-code-list-filtered" value="{{ c.network_zone }}"></td>
                     <td class="ip-col"><input type="text" data-field="ip" value="{{ c.ip }}"></td>
                     <td class="port-col"><input type="text" data-field="port" value="{{ c.port }}"></td>
-                    <td class="language-col"><input type="text" data-field="mw" value="{{ c.mw }}"></td>
-                    <td class="runtime-col"><input type="text" data-field="runtime" value="{{ c.runtime }}"></td>
-                    <td class="framework-col"><input type="text" data-field="os_dbms" value="{{ c.os_dbms }}"></td>
-                    <td class="middleware-col"><input type="text" data-field="middleware" value="{{ c.middleware }}"></td>
-                    <td class="os-col"><input type="text" data-field="os" value="{{ c.os }}"></td>
-                    <td class="db-col"><input type="text" data-field="db" value="{{ c.db }}"></td>
+                    <td class="language-col"><input type="text" data-field="mw" list="language-name-list-filtered" value="{{ c.mw }}" autocomplete="off"></td>
+                    <td class="runtime-col"><input type="text" data-field="runtime" list="runtime-name-list-filtered" value="{{ c.runtime }}" autocomplete="off"></td>
+                    <td class="framework-col"><input type="text" data-field="os_dbms" list="framework-name-list-filtered" value="{{ c.os_dbms }}" autocomplete="off"></td>
+                    <td class="middleware-col"><input type="text" data-field="middleware" list="middleware-name-list-filtered" value="{{ c.middleware }}" autocomplete="off"></td>
+                    <td class="os-col"><input type="text" data-field="os" list="os-name-list-filtered" value="{{ c.os }}" autocomplete="off"></td>
+                    <td class="db-col"><input type="text" data-field="db" list="db-name-list-filtered" value="{{ c.db }}" autocomplete="off"></td>
                     <td><input type="text" data-field="url_or_db_name" value="{{ c.url_or_db_name }}"></td>
                     <td class="ssl-domain-col"><input type="text" data-field="ssl_domain" value="{{ c.ssl_domain }}"></td>
                     <td class="cert-format-col"><input type="text" data-field="cert_format" value="{{ c.cert_format }}"></td>
@@ -295,6 +301,12 @@
     const infraTypeCodes = [{% for infra_type_code in infra_type_codes %}"{{ infra_type_code|escapejs }}"{% if not forloop.last %}, {% endif %}{% endfor %}];
     const infraLocCodes = [{% for infra_loc_code in infra_loc_codes %}"{{ infra_loc_code|escapejs }}"{% if not forloop.last %}, {% endif %}{% endfor %}];
     const networkZoneCodes = [{% for network_zone_code in network_zone_codes %}"{{ network_zone_code|escapejs }}"{% if not forloop.last %}, {% endif %}{% endfor %}];
+    const languageNames = [{% for v in language_names %}"{{ v|escapejs }}"{% if not forloop.last %}, {% endif %}{% endfor %}];
+    const runtimeNames = [{% for v in runtime_names %}"{{ v|escapejs }}"{% if not forloop.last %}, {% endif %}{% endfor %}];
+    const frameworkNames = [{% for v in framework_names %}"{{ v|escapejs }}"{% if not forloop.last %}, {% endif %}{% endfor %}];
+    const middlewareNames = [{% for v in middleware_names %}"{{ v|escapejs }}"{% if not forloop.last %}, {% endif %}{% endfor %}];
+    const osNames = [{% for v in os_names %}"{{ v|escapejs }}"{% if not forloop.last %}, {% endif %}{% endfor %}];
+    const dbNames = [{% for v in db_names %}"{{ v|escapejs }}"{% if not forloop.last %}, {% endif %}{% endfor %}];
     const AWS_CODE = "AWS";
     let isComposing = false;
     const usedKeys = new Set(
@@ -380,6 +392,10 @@
         const lower = keyword.toLowerCase();
         return networkZoneCodes.find((code) => code.toLowerCase().startsWith(lower)) || "";
     };
+    const findStartsWithMatch = (source, keyword) => {
+        const lower = keyword.toLowerCase();
+        return source.find((value) => value.toLowerCase().startsWith(lower)) || "";
+    };
     const getLocationSource = (target) => {
         const tr = target.closest("tr");
         const platformInput = tr?.querySelector('input[data-field="platform_type"]');
@@ -440,6 +456,52 @@
         const lower = (keyword || "").toLowerCase();
         const matches = lower ? networkZoneCodes.filter((code) => code.toLowerCase().startsWith(lower)) : networkZoneCodes;
         datalist.innerHTML = matches.map((code) => `<option value="${code}"></option>`).join("");
+    };
+    const updateNameDatalist = (datalistId, source, keyword) => {
+        const datalist = document.getElementById(datalistId);
+        if (!datalist) return;
+        const lower = (keyword || "").toLowerCase();
+        const matches = lower ? source.filter((value) => value.toLowerCase().includes(lower)) : source;
+        datalist.innerHTML = matches.map((value) => `<option value="${value}"></option>`).join("");
+    };
+    const showNameSuggestion = (target, source, datalistId) => {
+        if (isComposing) return false;
+        const keyword = target.value || "";
+        updateNameDatalist(datalistId, source, keyword);
+        if (!keyword) return false;
+        const matched = findStartsWithMatch(source, keyword);
+        if (!matched) return false;
+        if (target.setSelectionRange && target === document.activeElement) {
+            target.value = matched;
+            target.setSelectionRange(keyword.length, matched.length);
+        }
+        return true;
+    };
+    const commitNameSuggestion = (target, source) => {
+        if (isComposing) return false;
+        const typed = (target.value || "").trim();
+        if (!typed) return false;
+        const tl = typed.toLowerCase();
+        const exact = source.find((value) => value.toLowerCase() === tl);
+        if (exact) {
+            if (target.value !== exact) {
+                target.value = exact;
+                markChecked(target);
+                return true;
+            }
+            return false;
+        }
+        const candidates = source.filter((value) => value.toLowerCase().includes(tl));
+        if (candidates.length === 1) {
+            target.value = candidates[0];
+            markChecked(target);
+            return true;
+        }
+        const matched = findStartsWithMatch(source, typed);
+        if (!matched) return false;
+        target.value = matched;
+        markChecked(target);
+        return true;
     };
     const showServerTypeSuggestion = (target) => {
         if (isComposing) return false;
@@ -631,17 +693,65 @@
             showNetworkZoneSuggestion(e.target);
             return;
         }
+        if (e.target.dataset.field === "mw") {
+            if ((e.inputType || "").startsWith("delete")) {
+                updateNameDatalist("language-name-list-filtered", languageNames, e.target.value || "");
+                return;
+            }
+            showNameSuggestion(e.target, languageNames, "language-name-list-filtered");
+            return;
+        }
+        if (e.target.dataset.field === "runtime") {
+            if ((e.inputType || "").startsWith("delete")) {
+                updateNameDatalist("runtime-name-list-filtered", runtimeNames, e.target.value || "");
+                return;
+            }
+            showNameSuggestion(e.target, runtimeNames, "runtime-name-list-filtered");
+            return;
+        }
+        if (e.target.dataset.field === "os_dbms") {
+            if ((e.inputType || "").startsWith("delete")) {
+                updateNameDatalist("framework-name-list-filtered", frameworkNames, e.target.value || "");
+                return;
+            }
+            showNameSuggestion(e.target, frameworkNames, "framework-name-list-filtered");
+            return;
+        }
+        if (e.target.dataset.field === "middleware") {
+            if ((e.inputType || "").startsWith("delete")) {
+                updateNameDatalist("middleware-name-list-filtered", middlewareNames, e.target.value || "");
+                return;
+            }
+            showNameSuggestion(e.target, middlewareNames, "middleware-name-list-filtered");
+            return;
+        }
+        if (e.target.dataset.field === "os") {
+            if ((e.inputType || "").startsWith("delete")) {
+                updateNameDatalist("os-name-list-filtered", osNames, e.target.value || "");
+                return;
+            }
+            showNameSuggestion(e.target, osNames, "os-name-list-filtered");
+            return;
+        }
+        if (e.target.dataset.field === "db") {
+            if ((e.inputType || "").startsWith("delete")) {
+                updateNameDatalist("db-name-list-filtered", dbNames, e.target.value || "");
+                return;
+            }
+            showNameSuggestion(e.target, dbNames, "db-name-list-filtered");
+            return;
+        }
         markChecked(e.target);
     });
     table.addEventListener("change", (e) => {
         if (e.target.matches("[data-field]")) markChecked(e.target);
     });
     table.addEventListener("compositionstart", (e) => {
-        if (!["server_type", "operation_dev", "platform_type", "location", "network_zone"].includes(e.target.dataset.field)) return;
+        if (!["server_type", "operation_dev", "platform_type", "location", "network_zone", "mw", "runtime", "os_dbms", "middleware", "os", "db"].includes(e.target.dataset.field)) return;
         isComposing = true;
     });
     table.addEventListener("compositionend", (e) => {
-        if (!["server_type", "operation_dev", "platform_type", "location", "network_zone"].includes(e.target.dataset.field)) return;
+        if (!["server_type", "operation_dev", "platform_type", "location", "network_zone", "mw", "runtime", "os_dbms", "middleware", "os", "db"].includes(e.target.dataset.field)) return;
         isComposing = false;
         if (e.target.dataset.field === "server_type") {
             showServerTypeSuggestion(e.target);
@@ -658,6 +768,30 @@
         }
         if (e.target.dataset.field === "location") {
             showLocationSuggestion(e.target);
+            return;
+        }
+        if (e.target.dataset.field === "mw") {
+            showNameSuggestion(e.target, languageNames, "language-name-list-filtered");
+            return;
+        }
+        if (e.target.dataset.field === "runtime") {
+            showNameSuggestion(e.target, runtimeNames, "runtime-name-list-filtered");
+            return;
+        }
+        if (e.target.dataset.field === "os_dbms") {
+            showNameSuggestion(e.target, frameworkNames, "framework-name-list-filtered");
+            return;
+        }
+        if (e.target.dataset.field === "middleware") {
+            showNameSuggestion(e.target, middlewareNames, "middleware-name-list-filtered");
+            return;
+        }
+        if (e.target.dataset.field === "os") {
+            showNameSuggestion(e.target, osNames, "os-name-list-filtered");
+            return;
+        }
+        if (e.target.dataset.field === "db") {
+            showNameSuggestion(e.target, dbNames, "db-name-list-filtered");
             return;
         }
         showNetworkZoneSuggestion(e.target);
@@ -722,6 +856,54 @@
             if (e.key === "Tab") commitNetworkZoneSuggestion(e.target);
             return;
         }
+        if (e.target.dataset.field === "mw") {
+            if (e.key === "Enter") {
+                if (commitNameSuggestion(e.target, languageNames)) e.preventDefault();
+                return;
+            }
+            if (e.key === "Tab") commitNameSuggestion(e.target, languageNames);
+            return;
+        }
+        if (e.target.dataset.field === "runtime") {
+            if (e.key === "Enter") {
+                if (commitNameSuggestion(e.target, runtimeNames)) e.preventDefault();
+                return;
+            }
+            if (e.key === "Tab") commitNameSuggestion(e.target, runtimeNames);
+            return;
+        }
+        if (e.target.dataset.field === "os_dbms") {
+            if (e.key === "Enter") {
+                if (commitNameSuggestion(e.target, frameworkNames)) e.preventDefault();
+                return;
+            }
+            if (e.key === "Tab") commitNameSuggestion(e.target, frameworkNames);
+            return;
+        }
+        if (e.target.dataset.field === "middleware") {
+            if (e.key === "Enter") {
+                if (commitNameSuggestion(e.target, middlewareNames)) e.preventDefault();
+                return;
+            }
+            if (e.key === "Tab") commitNameSuggestion(e.target, middlewareNames);
+            return;
+        }
+        if (e.target.dataset.field === "os") {
+            if (e.key === "Enter") {
+                if (commitNameSuggestion(e.target, osNames)) e.preventDefault();
+                return;
+            }
+            if (e.key === "Tab") commitNameSuggestion(e.target, osNames);
+            return;
+        }
+        if (e.target.dataset.field === "db") {
+            if (e.key === "Enter") {
+                if (commitNameSuggestion(e.target, dbNames)) e.preventDefault();
+                return;
+            }
+            if (e.key === "Tab") commitNameSuggestion(e.target, dbNames);
+            return;
+        }
         if (e.key === "Enter" && e.target.dataset.field === "system_name") {
             const keyword = (e.target.value || "").trim().toLowerCase();
             if (!keyword) return;
@@ -752,6 +934,30 @@
         }
         if (e.target.dataset.field === "network_zone") {
             commitNetworkZoneSuggestion(e.target);
+            return;
+        }
+        if (e.target.dataset.field === "mw") {
+            commitNameSuggestion(e.target, languageNames);
+            return;
+        }
+        if (e.target.dataset.field === "runtime") {
+            commitNameSuggestion(e.target, runtimeNames);
+            return;
+        }
+        if (e.target.dataset.field === "os_dbms") {
+            commitNameSuggestion(e.target, frameworkNames);
+            return;
+        }
+        if (e.target.dataset.field === "middleware") {
+            commitNameSuggestion(e.target, middlewareNames);
+            return;
+        }
+        if (e.target.dataset.field === "os") {
+            commitNameSuggestion(e.target, osNames);
+            return;
+        }
+        if (e.target.dataset.field === "db") {
+            commitNameSuggestion(e.target, dbNames);
         }
     }, true);
     updateServerTypeDatalist("");
@@ -759,6 +965,12 @@
     updateInfraTypeDatalist("");
     table.querySelectorAll('input[data-field="platform_type"]').forEach((el) => lockLocationByPlatformType(el, true));
     updateNetworkZoneDatalist("");
+    updateNameDatalist("language-name-list-filtered", languageNames, "");
+    updateNameDatalist("runtime-name-list-filtered", runtimeNames, "");
+    updateNameDatalist("framework-name-list-filtered", frameworkNames, "");
+    updateNameDatalist("middleware-name-list-filtered", middlewareNames, "");
+    updateNameDatalist("os-name-list-filtered", osNames, "");
+    updateNameDatalist("db-name-list-filtered", dbNames, "");
 
     document.getElementById("component-save-btn").addEventListener("click", () => {
         const rows = [...table.querySelectorAll("tbody tr")]
