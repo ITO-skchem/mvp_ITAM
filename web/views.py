@@ -1,217 +1,142 @@
 import json
-from decimal import Decimal, InvalidOperation
 from io import BytesIO
 from urllib.parse import urlencode
 
 import pandas as pd
-from django.contrib.auth.decorators import login_required, permission_required
 from django.contrib import messages
+from django.contrib.auth.decorators import login_required, permission_required
 from django.core.paginator import Paginator
-from django.db.models import Q
+from django.db.models import Prefetch, Q
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 
 from ai_search.services import AssetSearchService
-from assets.infra_sync import build_appl_owner_names, build_person_names_for_role
 from assets.models import InfraAsset
 from core.models import AuditLog, Code
-from masters.models import Component, ComponentMaster, PersonMaster, ServiceMaster
-
-# 컴포넌트 마스터 — 컴포넌트명(코드 그룹의 Code.name, 제품명+버전) 선택용
-COMPONENT_PRODUCT_CODE_GROUPS = (
-    "language",
-    "runtime",
-    "framework",
-    "library",
-    "middleware",
-    "os",
-    "db",
+from masters.models import (
+    Component,
+    ConfigurationMaster,
+    PersonMaster,
+    ServiceAttribute,
+    ServiceMaster,
 )
+from masters.service_person_grid import SERVICE_PERSON_GRID_COLUMNS, attribute_codes_for_grid
 
 
-def build_hosts_by_service():
-    """자산 마스터(Component) 기준: 서비스명(system_name)별 Hostname 목록."""
-    mapping = {}
-    rows = (
-        Component.objects.exclude(system_name="")
-        .exclude(hostname="")
-        .values_list("system_name", "hostname")
-        .order_by("system_name", "hostname")
-    )
-    for sn, hn in rows:
-        lst = mapping.setdefault(sn, [])
-        if hn not in lst:
-            lst.append(hn)
-    return mapping
+def split_csv_tokens(raw):
+    return [t.strip() for t in str(raw or "").split(",") if t.strip()]
 
 
-def build_component_master_product_bundle():
-    """컴포넌트 마스터: 제품 코드 목록, 코드값→코드명, 코드명→그룹 표시명."""
-    product_codes = []
-    seen_code = set()
-    code_to_name = {}
-    name_to_group = {}
-    lower_name_to_canonical = {}
-    names_set = set()
-    codes_set = set()
-    for gk in COMPONENT_PRODUCT_CODE_GROUPS:
-        qs = (
-            Code.objects.filter(group__key=gk, group__is_active=True, is_active=True)
-            .select_related("group")
-            .order_by("sort_order", "code")
+def join_csv_tokens(values):
+    return ", ".join(v for v in values if str(v or "").strip())
+
+
+def parse_person_ids_from_attr_value(raw):
+    ids = []
+    for token in split_csv_tokens(raw):
+        if token.isdigit():
+            ids.append(int(token))
+    return ids
+
+
+def person_option_map_by_role():
+    from collections import defaultdict
+
+    grouped = defaultdict(list)
+    role_codes_needed = [c["role_code"] for c in SERVICE_PERSON_GRID_COLUMNS]
+    qs = PersonMaster.objects.select_related("role_code").order_by("name", "employee_no")
+    for p in qs:
+        rc = getattr(p.role_code, "code", None) if p.role_code else None
+        if rc not in role_codes_needed:
+            continue
+        grouped[rc].append({"id": p.pk, "label": f"{p.name} ({p.employee_no})"})
+    return grouped
+
+
+def service_person_columns_with_options():
+    grouped = person_option_map_by_role()
+    return [{**col, "options": list(grouped[col["role_code"]])} for col in SERVICE_PERSON_GRID_COLUMNS]
+
+
+def person_label_map():
+    return {p.pk: (p.name or "").strip() for p in PersonMaster.objects.all().order_by("name", "employee_no")}
+
+
+def service_lookup_maps():
+    by_name = {}
+    by_mgmt = {}
+    for s in ServiceMaster.objects.all().order_by("service_mgmt_no"):
+        by_name[s.name] = s
+        by_mgmt[s.service_mgmt_no] = s
+    return by_name, by_mgmt
+
+
+def set_service_attr_person_ids(service_obj, acode, person_ids):
+    clean_ids = sorted({int(x) for x in person_ids if str(x).isdigit() or isinstance(x, int)})
+    if clean_ids:
+        ServiceAttribute.objects.update_or_create(
+            service=service_obj,
+            attribute_code_id=acode,
+            defaults={"value": join_csv_tokens([str(i) for i in clean_ids])},
         )
-        for row in qs:
-            codes_set.add(row.code)
-            code_to_name[row.code] = row.name
-            names_set.add(row.name)
-            lower_name_to_canonical[row.name.lower()] = row.name
-            if row.name not in name_to_group:
-                name_to_group[row.name] = row.group.name
-            if row.code in seen_code:
+    else:
+        ServiceAttribute.objects.filter(service=service_obj, attribute_code_id=acode).delete()
+
+
+def sync_service_person_attributes_from_service_grid_row(service_obj, row):
+    p_qs = PersonMaster.objects.all().order_by("name", "employee_no")
+    label_to_id = {f"{p.name}({p.employee_no})": p.pk for p in p_qs}
+    name_to_id = {p.name: p.pk for p in p_qs}
+    emp_to_id = {p.employee_no: p.pk for p in p_qs}
+    for col in SERVICE_PERSON_GRID_COLUMNS:
+        acode = col["attribute_code"]
+        key = f"attr_{acode}"
+        parsed_ids = []
+        for token in split_csv_tokens(row.get(key)):
+            if token.isdigit() and PersonMaster.objects.filter(pk=int(token)).exists():
+                parsed_ids.append(int(token))
+            elif token in label_to_id:
+                parsed_ids.append(label_to_id[token])
+            elif token in name_to_id:
+                parsed_ids.append(name_to_id[token])
+            elif token in emp_to_id:
+                parsed_ids.append(emp_to_id[token])
+        set_service_attr_person_ids(service_obj, acode, parsed_ids)
+
+
+def sync_person_service_assignments_from_row(person_obj, row):
+    by_name, by_mgmt = service_lookup_maps()
+    role_to_acode = {c["role_code"]: c["attribute_code"] for c in SERVICE_PERSON_GRID_COLUMNS}
+    target_role = getattr(person_obj.role_code, "code", "") if person_obj.role_code else ""
+    target_acode = role_to_acode.get(target_role)
+
+    selected_service_ids = set()
+    for token in split_csv_tokens(row.get("assigned_service_names")):
+        svc = by_name.get(token) or by_mgmt.get(token)
+        if svc:
+            selected_service_ids.add(svc.pk)
+
+    all_services = list(ServiceMaster.objects.all())
+    all_acodes = list(role_to_acode.values())
+
+    # 역할 변경/서비스 해제 케이스 포함: 먼저 모든 역할 속성에서 현재 담당자 제거
+    for svc in all_services:
+        for acode in all_acodes:
+            curr = ServiceAttribute.objects.filter(service=svc, attribute_code_id=acode).first()
+            curr_set = set(parse_person_ids_from_attr_value(curr.value if curr else ""))
+            if person_obj.pk in curr_set:
+                curr_set.discard(person_obj.pk)
+                set_service_attr_person_ids(svc, acode, sorted(curr_set))
+
+    # 현재 선택 역할의 서비스 목록에만 다시 추가
+    if target_acode:
+        for svc in all_services:
+            if svc.pk not in selected_service_ids:
                 continue
-            seen_code.add(row.code)
-            product_codes.append({"code": row.code, "name": row.name, "group": row.group.name})
-    # UI 드롭다운/자동완성 정렬: 알파벳(A-Z) -> 숫자 -> 특수문자
-    def _sort_bucket(name):
-        s = (name or "").strip()
-        if not s:
-            return 3
-        ch = s[0]
-        if ch.isalpha():
-            return 0
-        if ch.isdigit():
-            return 1
-        return 2
-
-    product_codes.sort(
-        key=lambda item: (
-            _sort_bucket(item.get("name")),
-            (item.get("name") or "").lower(),
-            item.get("code") or "",
-        )
-    )
-    return {
-        "product_codes": product_codes,
-        "code_to_name": code_to_name,
-        "name_to_group": name_to_group,
-        "lower_name_to_canonical": lower_name_to_canonical,
-        "names_set": names_set,
-        "codes_set": codes_set,
-    }
-
-
-def build_component_product_codes():
-    """7개 코드 그룹에서 code·name·group 목록(코드 기준 중복 제거, 그룹 순·정렬 유지)."""
-    return build_component_master_product_bundle()["product_codes"]
-
-
-def build_component_group_display_names(group_key):
-    """컴포넌트 그룹별 표시명(Code.name) 목록."""
-    names = list(
-        Code.objects.filter(group__key=group_key, group__is_active=True, is_active=True)
-        .values_list("name", flat=True)
-        .distinct()
-    )
-
-    def _sort_bucket(name):
-        s = (name or "").strip()
-        if not s:
-            return 3
-        ch = s[0]
-        if ch.isalpha():
-            return 0
-        if ch.isdigit():
-            return 1
-        return 2
-
-    names.sort(key=lambda name: (_sort_bucket(name), (name or "").lower()))
-    return names
-
-
-def resolve_component_master_product_input(raw, bundle):
-    """입력값(코드명 또는 과거 코드값)을 DB에 저장할 표준 코드명으로 변환. (canonical_name, ok)."""
-    s = (raw or "").strip()
-    if not s:
-        return "", True
-    if s in bundle["codes_set"]:
-        name = bundle["code_to_name"].get(s)
-        return (name, True) if name else (None, False)
-    if s in bundle["names_set"]:
-        return s, True
-    key = s.lower()
-    if key in bundle["lower_name_to_canonical"]:
-        return bundle["lower_name_to_canonical"][key], True
-    return None, False
-
-
-PERSON_ROLE_CODES = [
-    "고객사 담당자",
-    "Appl. 담당자",
-    "Appl. 운영자",
-    "서버 담당자",
-    "DB 담당자",
-]
-RESIDENT_CODES = ["상주", "비상주"]
-PERSON_ROLE_ALIASES = {
-    "customer": "고객사 담당자",
-    "customer_owner": "고객사 담당자",
-    "appl": "Appl. 담당자",
-    "app": "Appl. 담당자",
-    "application": "Appl. 담당자",
-    "developer": "Appl. 담당자",
-    "partner": "Appl. 운영자",
-    "partner_operator": "Appl. 운영자",
-    "협력사 운영자": "Appl. 운영자",
-    "server": "서버 담당자",
-    "server_owner": "서버 담당자",
-    "db": "DB 담당자",
-    "db_owner": "DB 담당자",
-}
-
-
-def build_code_label_maps(group_keys):
-    rows = (
-        Code.objects.filter(group__key__in=group_keys, group__is_active=True, is_active=True)
-        .select_related("group")
-        .order_by("group__sort_order", "sort_order", "code")
-    )
-    maps = {key: {} for key in group_keys}
-    for row in rows:
-        maps[row.group.key][row.code] = row.name
-    return maps
-
-
-def build_code_options(group_key, include_blank=True):
-    rows = (
-        Code.objects.filter(group__key=group_key, group__is_active=True, is_active=True)
-        .select_related("group")
-        .order_by("group__sort_order", "sort_order", "code")
-    )
-    options = [("", "---------")] if include_blank else []
-    options.extend([(r.code, r.name) for r in rows])
-    return options
-
-
-def build_code_values(group_key):
-    rows = (
-        Code.objects.filter(group__key=group_key, group__is_active=True, is_active=True)
-        .order_by("group__sort_order", "sort_order", "code")
-        .values_list("code", flat=True)
-    )
-    return list(rows)
-
-
-def parse_bool(val):
-    return str(val).strip().lower() in {"1", "y", "yes", "true", "t"}
-
-
-def parse_decimal(val):
-    if val in (None, ""):
-        return None
-    try:
-        return Decimal(str(val))
-    except (InvalidOperation, TypeError):
-        return None
+            curr = ServiceAttribute.objects.filter(service=svc, attribute_code_id=target_acode).first()
+            curr_set = set(parse_person_ids_from_attr_value(curr.value if curr else ""))
+            curr_set.add(person_obj.pk)
+            set_service_attr_person_ids(svc, target_acode, sorted(curr_set))
 
 
 def parse_date(val):
@@ -223,62 +148,60 @@ def parse_date(val):
     return dt.date()
 
 
-def split_owner_names(raw):
-    value = str(raw or "").strip()
-    if not value:
-        return []
-    return [part.strip() for part in value.split(";") if part.strip()]
-
-
-def parse_resident_code(val):
-    if isinstance(val, bool):
-        return val
-    text = str(val).strip()
-    if not text:
-        return None
-    if text == "상주":
-        return True
-    if text == "비상주":
-        return False
-    lowered = text.lower()
-    if lowered in {"1", "y", "yes", "true", "t"}:
-        return True
-    if lowered in {"0", "n", "no", "false", "f"}:
-        return False
-    return None
-
-
-def normalize_person_role(val):
-    text = str(val or "").strip()
-    if not text:
-        return ""
-    if text in PERSON_ROLE_CODES:
-        return text
-    return PERSON_ROLE_ALIASES.get(text.lower(), text)
-
-
-def sync_legacy_person_roles():
-    changed_people = []
-    for person in PersonMaster.objects.exclude(role="").only("pk", "role"):
-        normalized = normalize_person_role(person.role)
-        if normalized != person.role and normalized in PERSON_ROLE_CODES:
-            person.role = normalized
-            changed_people.append(person)
-    if changed_people:
-        PersonMaster.objects.bulk_update(changed_people, ["role"])
-
-
 def to_excel_response(df, filename):
     out = BytesIO()
     with pd.ExcelWriter(out, engine="openpyxl") as writer:
         df.to_excel(writer, index=False)
-    out.seek(0)
+    content = out.getvalue()
     res = HttpResponse(
-        out.read(),
+        content,
         content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
     res["Content-Disposition"] = f'attachment; filename="{filename}"'
     return res
+
+
+def to_excel_multi_response(sheet_map, filename):
+    out = BytesIO()
+    with pd.ExcelWriter(out, engine="openpyxl") as writer:
+        for sheet_name, df in sheet_map.items():
+            df.to_excel(writer, index=False, sheet_name=sheet_name[:31])
+    content = out.getvalue()
+    res = HttpResponse(
+        content,
+        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+    res["Content-Disposition"] = f'attachment; filename="{filename}"'
+    return res
+
+
+def code_reference_df(group_keys):
+    rows = []
+    for gk in group_keys:
+        for code, name in (
+            Code.objects.filter(group__key=gk, group__is_active=True, is_active=True)
+            .order_by("sort_order", "code")
+            .values_list("code", "name")
+        ):
+            rows.append({"코드그룹": gk, "코드값": code, "코드명": name})
+    return pd.DataFrame(rows, columns=["코드그룹", "코드값", "코드명"])
+
+
+def build_model_text_search_q(model_class, query):
+    text = (query or "").strip()
+    if not text:
+        return Q()
+    q = Q()
+    for field in model_class._meta.fields:
+        if field.get_internal_type() in {
+            "CharField",
+            "TextField",
+            "EmailField",
+            "URLField",
+            "GenericIPAddressField",
+        }:
+            q |= Q(**{f"{field.name}__icontains": text})
+    return q
 
 
 def build_list_redirect(path, query="", page="", failed_ids=None):
@@ -292,104 +215,42 @@ def build_list_redirect(path, query="", page="", failed_ids=None):
     return f"{path}?{urlencode(params)}" if params else path
 
 
-def build_error_message(exc):
-    msg = str(exc)
-    if "UNIQUE constraint failed" in msg:
-        return "중복 KEY 또는 유니크 제약 오류"
-    if "NOT NULL constraint failed" in msg:
-        return "필수값 누락"
-    return "저장 실패"
+def code_values(group_key):
+    return list(
+        Code.objects.filter(group__key=group_key, group__is_active=True, is_active=True)
+        .order_by("sort_order", "code")
+        .values_list("code", flat=True)
+    )
 
 
-def summarize_row_errors(row_errors):
-    if not row_errors:
-        return []
-    counts = {}
-    for msg in row_errors.values():
-        if not msg:
-            continue
-        counts[msg] = counts.get(msg, 0) + 1
-    return [f"{msg} ({count}건)" for msg, count in counts.items()]
+def code_choice_options(group_key):
+    """그리드 셀렉트용: value는 code, 라벨은 Code.name(표시명)."""
+    return list(
+        Code.objects.filter(group__key=group_key, group__is_active=True, is_active=True)
+        .order_by("sort_order", "code")
+        .values("code", "name")
+    )
 
 
-def get_row_value(row, candidates, default=""):
-    for key in candidates:
-        if key in row.index:
-            value = row.get(key)
-            if pd.isna(value):
-                continue
-            return value
-    return default
+# 담당자 역할 코드 개명 이전 코드값 → 현재 코드값 (엑셀 재업로드 등)
+LEGACY_PERSON_ROLE_CODES = {"APPL_OPS": "OPERATOR", "INFRA_OPS": "INFRA_OPERATOR"}
 
 
-def normalize_server_type_by_hostname(hostname, current_server_type=""):
-    value = str(hostname or "")
-    upper = value.upper()
-    if "-AP" in upper:
-        return "WAS"
-    if "-WEB" in upper:
-        return "WEB"
-    return str(current_server_type or "").strip()
+def code_from_value(group_key, value):
+    v = (value or "").strip()
+    if not v:
+        return None
+    if group_key == "person_role" and v in LEGACY_PERSON_ROLE_CODES:
+        v = LEGACY_PERSON_ROLE_CODES[v]
+    return Code.objects.filter(group__key=group_key, code=v, group__is_active=True, is_active=True).first()
 
 
-_TEXT_SEARCH_FIELD_TYPES = frozenset(
-    {
-        "CharField",
-        "TextField",
-        "EmailField",
-        "URLField",
-        "SlugField",
-        "GenericIPAddressField",
-    }
-)
-
-
-def _iter_model_text_search_fields(model_class):
-    for field in model_class._meta.get_fields():
-        if not getattr(field, "concrete", True):
-            continue
-        if getattr(field, "many_to_many", False) or getattr(field, "one_to_many", False):
-            continue
-        if field.get_internal_type() == "JSONField":
-            continue
-        if field.get_internal_type() not in _TEXT_SEARCH_FIELD_TYPES:
-            continue
-        yield field
-
-
-def _field_column_title(field):
-    vn = getattr(field, "verbose_name", None)
-    if vn and str(vn).strip():
-        return str(vn).strip()
-    return str(field.name).replace("_", " ")
-
-
-def build_model_text_search_q(model_class, query):
-    """리스트 검색: 모델의 문자열 계열 컬럼 전부에 대해 OR(icontains).
-
-    ``컬럼힌트:값`` 형태면 ``컬럼힌트``가 verbose_name(컬럼 제목)에 포함되는 컬럼만
-    ``값``으로 icontains 검색한다. 매칭 컬럼이 없으면 전체 문자열로 기존처럼 검색한다.
-    """
-    text = (query or "").strip()
-    if not text:
-        return Q()
-    if ":" in text:
-        left, _, right_rest = text.partition(":")
-        left = left.strip()
-        right = right_rest.strip()
-        if left and right:
-            needle = left.casefold()
-            narrowed = Q()
-            for field in _iter_model_text_search_fields(model_class):
-                title = _field_column_title(field).casefold()
-                if needle in title:
-                    narrowed |= Q(**{f"{field.attname}__icontains": right})
-            if narrowed:
-                return narrowed
-    combined = Q()
-    for field in _iter_model_text_search_fields(model_class):
-        combined |= Q(**{f"{field.attname}__icontains": text})
-    return combined
+def audit_actor_label(request):
+    user = getattr(request, "user", None)
+    if user and getattr(user, "is_authenticated", False):
+        name = getattr(user, "username", "") or getattr(user, "get_username", lambda: "")()
+        return (name or str(getattr(user, "pk", ""))).strip() or "unknown"
+    return ""
 
 
 @login_required
@@ -400,6 +261,7 @@ def dashboard(request):
             "service": ServiceMaster.objects.count(),
             "person": PersonMaster.objects.count(),
             "component": Component.objects.count(),
+            "configuration": ConfigurationMaster.objects.count(),
             "audit": AuditLog.objects.count(),
         }
     }
@@ -413,74 +275,40 @@ def asset_list(request):
     qs = InfraAsset.objects.all().order_by("service_mgmt_no", "asset_mgmt_no")
     if query:
         qs = qs.filter(build_model_text_search_q(InfraAsset, query))
-
     if request.GET.get("export") == "1":
-        cols = [
-            "system_mgmt_no",
-            "service_name",
-            "hostname",
-            "customer_owner_name",
-            "appl_owner_name",
-            "partner_operator_name",
-            "server_owner_name",
-            "db_owner_name",
-            "server_type",
-            "operation_dev",
-            "network_zone",
-            "platform_type",
-            "ip",
-            "port",
-            "location",
-            "mw",
-            "runtime",
-            "os_dbms",
-            "url_or_db_name",
-            "ssl_domain",
-            "cert_format",
-            "remark1",
-            "remark2",
-        ]
-        rename_map = {
-            "system_mgmt_no": "시스템 관리번호",
-            "service_name": "서비스명",
-            "customer_owner_name": "고객사 담당자",
-            "appl_owner_name": "Appl. 담당자",
-            "partner_operator_name": "Appl. 운영자",
-            "server_owner_name": "서버 담당자",
-            "db_owner_name": "DB 담당자",
-            "hostname": "Hostname",
-            "server_type": "서버 구분",
-            "operation_dev": "운영/개발",
-            "network_zone": "네트웍 구분",
-            "platform_type": "플랫폼 구분",
-            "ip": "IP",
-            "port": "Port",
-            "location": "위치",
-            "mw": "MW",
-            "runtime": "Runtime",
-            "os_dbms": "OS/DBMS",
-            "url_or_db_name": "URL/DB명",
-            "ssl_domain": "SSL 도메인",
-            "cert_format": "인증서 포맷",
-            "remark1": "비고1",
-            "remark2": "비고2",
-        }
-        rows = list(qs.values(*cols))
-        df = pd.DataFrame(rows, columns=cols).rename(columns=rename_map)
-        df = df[[rename_map[c] for c in cols]]
-        return to_excel_response(df, "system_integrated_info.xlsx")
-
+        df = pd.DataFrame(
+            list(
+                qs.values(
+                    "system_mgmt_no",
+                    "service_name",
+                    "hostname",
+                    "customer_owner_name",
+                    "appl_owner_name",
+                    "partner_operator_name",
+                    "server_owner_name",
+                    "db_owner_name",
+                    "server_type",
+                    "operation_dev",
+                    "network_zone",
+                    "platform_type",
+                    "ip",
+                    "port",
+                    "location",
+                    "mw",
+                    "runtime",
+                    "os_dbms",
+                    "url_or_db_name",
+                    "ssl_domain",
+                    "cert_format",
+                    "remark1",
+                    "remark2",
+                )
+            )
+        )
+        return to_excel_response(df, "infra_assets.xlsx")
     paginator = Paginator(qs, 100)
     page_obj = paginator.get_page(request.GET.get("page"))
-    return render(
-        request,
-        "web/asset_list.html",
-        {
-            "assets": page_obj.object_list,
-            "page_obj": page_obj,
-            "q": query,
-        },
-    )
+    return render(request, "web/asset_list.html", {"assets": page_obj.object_list, "page_obj": page_obj, "q": query})
 
 
 @login_required
@@ -495,300 +323,125 @@ def asset_detail(request, pk):
 def service_master_list(request):
     query = request.GET.get("q", "").strip()
     page = request.GET.get("page", "").strip()
-    failed_ids = {int(x) for x in request.GET.get("failed_ids", "").split(",") if x.isdigit()}
-    row_errors = request.session.pop("row_errors_service", {})
-    svc_category_codes = build_code_values("svc_category")
-    svc_category_code_set = set(svc_category_codes)
-    opr_division_codes = build_code_values("opr_division")
-    opr_division_code_set = set(opr_division_codes)
-    dev_type_codes = build_code_values("dev_type")
-    dev_type_code_set = set(dev_type_codes)
-    qs = ServiceMaster.objects.all().order_by("service_mgmt_no", "name")
+    attr_codes = attribute_codes_for_grid()
+    qs = (
+        ServiceMaster.objects.select_related(
+            "category_code", "status_code", "build_type_code", "itgc_code", "service_grade_code"
+        )
+        .prefetch_related(
+            Prefetch(
+                "service_attributes",
+                queryset=ServiceAttribute.objects.filter(attribute_code_id__in=attr_codes),
+            )
+        )
+        .order_by("service_mgmt_no")
+    )
     if query:
         qs = qs.filter(build_model_text_search_q(ServiceMaster, query))
 
     if request.GET.get("export") == "1":
-        cols = [
-            "service_mgmt_no",
-            "name",
-            "system_type",
-            "description",
-            "operation_type",
-            "service_grade",
-            "service_level",
-            "itgc",
-            "customer_owner",
-            "partner_operator",
-            "appl_owner",
-            "server_owner",
-            "db_owner",
-            "opened_at",
-            "build_type",
-            "scm_tool",
-            "deploy_tool",
-            "monitoring_tool",
-            "gc",
-            "pharma",
-            "plasma",
-            "mu",
-            "entis",
-            "daejung",
-            "dy",
-            "bs",
-            "bs_share_ratio",
-            "bs_share_note",
-            "notes",
-        ]
-        rename_map = {
-            "service_mgmt_no": "서비스관리번호",
-            "name": "서비스명",
-            "system_type": "시스템 구분",
-            "description": "설명",
-            "operation_type": "운영구분",
-            "service_grade": "서비스 등급",
-            "service_level": "서비스 수준",
-            "itgc": "ITGC 여부",
-            "customer_owner": "고객사 담당자",
-            "partner_operator": "Appl. 담당자",
-            "appl_owner": "Appl. 운영자",
-            "server_owner": "서버 담당자",
-            "db_owner": "DB 담당자",
-            "opened_at": "서비스 오픈일",
-            "build_type": "구축 구분",
-            "scm_tool": "형상관리",
-            "deploy_tool": "배포도구",
-            "monitoring_tool": "모니터링도구",
-            "gc": "GC",
-            "pharma": "파마",
-            "plasma": "플라즈마",
-            "mu": "MU",
-            "entis": "엔티스",
-            "daejung": "대정",
-            "dy": "DY",
-            "bs": "BS",
-            "bs_share_ratio": "BS Share 비율",
-            "bs_share_note": "BS Share 비고",
-            "notes": "비고",
-        }
-        df = pd.DataFrame(list(qs.values(*cols)), columns=cols).rename(columns=rename_map)
-        df = df[[rename_map[c] for c in cols]]
-        return to_excel_response(df, "service_master.xlsx")
+        p_label_map = person_label_map()
+        rows = []
+        for s in qs:
+            role_map = {}
+            for sa in s.service_attributes.all():
+                role_map[sa.attribute_code_id] = join_csv_tokens(
+                    [p_label_map.get(pid, str(pid)) for pid in parse_person_ids_from_attr_value(sa.value)]
+                )
+            row = {
+                "서비스ID": s.service_mgmt_no,
+                "서비스명": s.name,
+                "분류": getattr(s.category_code, "code", ""),
+                "상태": getattr(s.status_code, "code", ""),
+                "구축": getattr(s.build_type_code, "code", ""),
+                "ITGC": getattr(s.itgc_code, "code", ""),
+                "등급": getattr(s.service_grade_code, "code", ""),
+                "오픈일": s.opened_at,
+                "종료일": s.ended_at,
+                "설명": s.description,
+            }
+            for col in SERVICE_PERSON_GRID_COLUMNS:
+                row[col["label"]] = role_map.get(col["attribute_code"], "")
+            rows.append(row)
+        main_df = pd.DataFrame(rows)
+        ref_df = code_reference_df(["service_category", "service_status", "build_type", "yn_flag", "service_grade"])
+        return to_excel_multi_response({"서비스마스터": main_df, "코드참조": ref_df}, "service_master.xlsx")
 
-    if request.method == "POST":
-        action = request.POST.get("action", "")
-        if action == "import" and request.FILES.get("excel_file"):
-            df = pd.read_excel(request.FILES["excel_file"])
-            updated_count = 0
-            created_count = 0
-            skipped_count = 0
-            import_row_errors = {}
-            for excel_row_no, (_, row) in enumerate(df.iterrows(), start=2):
-                mgmt_no = str(get_row_value(row, ["service_mgmt_no", "서비스관리번호"], "")).strip()
-                service_name = str(get_row_value(row, ["name", "서비스명", "시스템명"], "")).strip()
-                if not service_name:
-                    skipped_count += 1
-                    import_row_errors[f"import_{excel_row_no}"] = f"{excel_row_no}행: 필수값 누락: 서비스명"
-                    continue
-                system_type = str(get_row_value(row, ["system_type", "시스템 구분"], "")).strip()
-                if system_type and system_type not in svc_category_code_set:
-                    skipped_count += 1
-                    import_row_errors[f"import_{excel_row_no}"] = (
-                        f"{excel_row_no}행: 유효하지 않은 서비스 구분 코드: {system_type}"
-                    )
-                    continue
-                operation_type = str(get_row_value(row, ["operation_type", "운영구분"], "")).strip()
-                if operation_type and operation_type not in opr_division_code_set:
-                    skipped_count += 1
-                    import_row_errors[f"import_{excel_row_no}"] = (
-                        f"{excel_row_no}행: 유효하지 않은 운영구분 코드: {operation_type}"
-                    )
-                    continue
-                build_type = str(get_row_value(row, ["build_type", "구축 구분"], "")).strip()
-                if build_type and build_type not in dev_type_code_set:
-                    skipped_count += 1
-                    import_row_errors[f"import_{excel_row_no}"] = (
-                        f"{excel_row_no}행: 유효하지 않은 구축 구분 코드: {build_type}"
-                    )
-                    continue
-                defaults = {
-                    "name": service_name,
-                    "system_type": system_type,
-                    "description": str(get_row_value(row, ["description", "설명"], "")).strip(),
-                    "operation_type": operation_type,
-                    "service_grade": str(get_row_value(row, ["service_grade", "서비스 등급"], "")).strip(),
-                    "service_level": str(get_row_value(row, ["service_level", "서비스 수준"], "")).strip(),
-                    "itgc": parse_bool(get_row_value(row, ["itgc", "ITGC 여부"], "")),
-                    "customer_owner": build_person_names_for_role(service_name, "고객사 담당자"),
-                    "partner_operator": build_person_names_for_role(service_name, "Appl. 담당자"),
-                    "appl_owner": build_appl_owner_names(service_name),
-                    "server_owner": build_person_names_for_role(service_name, "서버 담당자"),
-                    "db_owner": build_person_names_for_role(service_name, "DB 담당자"),
-                    "opened_at": parse_date(get_row_value(row, ["opened_at", "서비스 오픈일"], "")),
-                    "build_type": build_type,
-                    "scm_tool": str(get_row_value(row, ["scm_tool", "형상관리"], "")).strip(),
-                    "deploy_tool": str(get_row_value(row, ["deploy_tool", "배포도구"], "")).strip(),
-                    "monitoring_tool": str(get_row_value(row, ["monitoring_tool", "모니터링도구"], "")).strip(),
-                    "gc": parse_bool(get_row_value(row, ["gc", "GC"], "")),
-                    "pharma": parse_bool(get_row_value(row, ["pharma", "파마"], "")),
-                    "plasma": parse_bool(get_row_value(row, ["plasma", "플라즈마"], "")),
-                    "mu": parse_bool(get_row_value(row, ["mu", "MU"], "")),
-                    "entis": parse_bool(get_row_value(row, ["entis", "엔티스"], "")),
-                    "daejung": parse_bool(get_row_value(row, ["daejung", "대정"], "")),
-                    "dy": parse_bool(get_row_value(row, ["dy", "DY"], "")),
-                    "bs": parse_bool(get_row_value(row, ["bs", "BS"], "")),
-                    "bs_share_ratio": parse_decimal(get_row_value(row, ["bs_share_ratio", "BS Share 비율"], "")),
-                    "bs_share_note": str(get_row_value(row, ["bs_share_note", "BS Share 비고"], "")).strip(),
-                    "notes": str(get_row_value(row, ["notes", "비고"], "")).strip(),
-                }
-                if mgmt_no:
-                    existing = ServiceMaster.objects.filter(service_mgmt_no=mgmt_no).first()
-                    if existing:
-                        for key, val in defaults.items():
-                            setattr(existing, key, val)
-                        existing.save()
-                        updated_count += 1
-                    elif defaults["name"]:
-                        ServiceMaster.objects.create(service_mgmt_no=mgmt_no, **defaults)
-                        created_count += 1
-                    else:
-                        skipped_count += 1
-                elif defaults["name"]:
-                    ServiceMaster.objects.create(**defaults)
-                    created_count += 1
-                else:
-                    skipped_count += 1
-            messages.success(
-                request,
-                f"엑셀 import 완료: 업데이트 {updated_count}건 / 인서트 {created_count}건 / 스킵 {skipped_count}건",
-            )
-            if import_row_errors:
-                request.session["row_errors_service"] = import_row_errors
-            return redirect(build_list_redirect(request.path, query=query, page=page))
-
-        if action == "save":
-            rows = json.loads(request.POST.get("rows_json", "[]"))
-            deleted_ids = json.loads(request.POST.get("deleted_ids_json", "[]"))
-            failed_ids = []
-            row_errors = {}
-            invalid_svc_category_codes = set()
-            invalid_opr_division_codes = set()
-            invalid_dev_type_codes = set()
-            if deleted_ids:
-                try:
-                    ServiceMaster.objects.filter(pk__in=deleted_ids).delete()
-                except Exception as exc:
-                    for xid in [x for x in deleted_ids if str(x).isdigit()]:
-                        failed_ids.append(xid)
-                        row_errors[str(xid)] = f"삭제 실패: {build_error_message(exc)}"
-
-            for row in rows:
-                pk = str(row.get("id", "")).strip()
-                service_mgmt_no = str(row.get("service_mgmt_no", "")).strip()
-                name = str(row.get("name", "")).strip()
-                if not pk and not name:
-                    continue
-                opened_at_raw = str(row.get("opened_at") or "").strip()
-                opened_at = parse_date(opened_at_raw)
-                if opened_at_raw and opened_at is None:
-                    if pk:
-                        failed_ids.append(pk)
-                        row_errors[str(pk)] = "유효하지 않은 날짜"
-                    continue
+    if request.method == "POST" and request.POST.get("action") == "import":
+        up = request.FILES.get("excel_file")
+        if up:
+            df = pd.read_excel(up)
+            actor = audit_actor_label(request)
+            for _, rec in df.fillna("").iterrows():
                 payload = {
-                    "name": name,
-                    "system_type": (row.get("system_type") or "").strip(),
-                    "description": (row.get("description") or "").strip(),
-                    "operation_type": (row.get("operation_type") or "").strip(),
-                    "service_grade": (row.get("service_grade") or "").strip(),
-                    "service_level": (row.get("service_level") or "").strip(),
-                    "itgc": parse_bool(row.get("itgc")),
-                    "customer_owner": build_person_names_for_role(name, "고객사 담당자"),
-                    "partner_operator": build_person_names_for_role(name, "Appl. 담당자"),
-                    "appl_owner": build_appl_owner_names(name),
-                    "server_owner": build_person_names_for_role(name, "서버 담당자"),
-                    "db_owner": build_person_names_for_role(name, "DB 담당자"),
-                    "opened_at": opened_at,
-                    "build_type": (row.get("build_type") or "").strip(),
-                    "scm_tool": (row.get("scm_tool") or "").strip(),
-                    "deploy_tool": (row.get("deploy_tool") or "").strip(),
-                    "monitoring_tool": (row.get("monitoring_tool") or "").strip(),
-                    "gc": parse_bool(row.get("gc")),
-                    "pharma": parse_bool(row.get("pharma")),
-                    "plasma": parse_bool(row.get("plasma")),
-                    "mu": parse_bool(row.get("mu")),
-                    "entis": parse_bool(row.get("entis")),
-                    "daejung": parse_bool(row.get("daejung")),
-                    "dy": parse_bool(row.get("dy")),
-                    "bs": parse_bool(row.get("bs")),
-                    "bs_share_ratio": parse_decimal(row.get("bs_share_ratio")),
-                    "bs_share_note": (row.get("bs_share_note") or "").strip(),
-                    "notes": (row.get("notes") or "").strip(),
+                    "name": str(rec.get("서비스명", "")).strip(),
+                    "category_code": code_from_value("service_category", rec.get("분류")),
+                    "status_code": code_from_value("service_status", rec.get("상태")),
+                    "build_type_code": code_from_value("build_type", rec.get("구축")),
+                    "itgc_code": code_from_value("yn_flag", rec.get("ITGC")),
+                    "service_grade_code": code_from_value("service_grade", rec.get("등급")),
+                    "opened_at": parse_date(rec.get("오픈일")),
+                    "ended_at": parse_date(rec.get("종료일")),
+                    "description": str(rec.get("설명", "")).strip(),
                 }
-                if payload["system_type"] and payload["system_type"] not in svc_category_code_set:
-                    if pk:
-                        failed_ids.append(pk)
-                        row_errors[str(pk)] = "유효하지 않은 서비스 구분 코드"
-                    else:
-                        invalid_svc_category_codes.add(payload["system_type"])
-                    continue
-                if payload["operation_type"] and payload["operation_type"] not in opr_division_code_set:
-                    if pk:
-                        failed_ids.append(pk)
-                        row_errors[str(pk)] = "유효하지 않은 운영구분 코드"
-                    else:
-                        invalid_opr_division_codes.add(payload["operation_type"])
-                    continue
-                if payload["build_type"] and payload["build_type"] not in dev_type_code_set:
-                    if pk:
-                        failed_ids.append(pk)
-                        row_errors[str(pk)] = "유효하지 않은 구축 구분 코드"
-                    else:
-                        invalid_dev_type_codes.add(payload["build_type"])
-                    continue
-                if pk:
-                    try:
-                        obj = ServiceMaster.objects.get(pk=pk)
-                        for key, val in payload.items():
-                            setattr(obj, key, val)
-                        obj.save()
-                    except Exception as exc:
-                        failed_ids.append(pk)
-                        row_errors[str(pk)] = build_error_message(exc)
+                svc_id = str(rec.get("서비스ID", "")).strip()
+                obj = ServiceMaster.objects.filter(service_mgmt_no=svc_id).first() if svc_id else None
+                if obj:
+                    for k, v in payload.items():
+                        setattr(obj, k, v)
+                    obj.updated_by = actor
+                    obj.save()
                 elif payload["name"]:
-                    try:
-                        ServiceMaster.objects.create(service_mgmt_no=service_mgmt_no or None, **payload)
-                    except Exception as exc:
-                        if service_mgmt_no:
-                            dup = ServiceMaster.objects.filter(service_mgmt_no=service_mgmt_no).values_list("pk", flat=True).first()
-                            if dup:
-                                failed_ids.append(dup)
-                                row_errors[str(dup)] = build_error_message(exc)
-            if invalid_svc_category_codes:
-                messages.error(
-                    request,
-                    "유효하지 않은 서비스 구분 코드가 포함되어 저장할 수 없습니다: "
-                    + ", ".join(sorted(invalid_svc_category_codes)),
-                )
-                row_errors["__global_svc_category__"] = "유효하지 않은 서비스 구분 코드 입력"
-            if invalid_opr_division_codes:
-                messages.error(
-                    request,
-                    "유효하지 않은 운영구분 코드가 포함되어 저장할 수 없습니다: "
-                    + ", ".join(sorted(invalid_opr_division_codes)),
-                )
-                row_errors["__global_opr_division__"] = "유효하지 않은 운영구분 코드 입력"
-            if invalid_dev_type_codes:
-                messages.error(
-                    request,
-                    "유효하지 않은 구축 구분 코드가 포함되어 저장할 수 없습니다: "
-                    + ", ".join(sorted(invalid_dev_type_codes)),
-                )
-                row_errors["__global_dev_type__"] = "유효하지 않은 구축 구분 코드 입력"
-            request.session["row_errors_service"] = row_errors
-            return redirect(build_list_redirect(request.path, query=query, page=page, failed_ids=failed_ids))
+                    ServiceMaster.objects.create(**payload, created_by=actor, updated_by=actor)
+            messages.success(request, "서비스 마스터 엑셀 업로드 완료")
+        return redirect(build_list_redirect(request.path, query=query, page=page))
+
+    if request.method == "POST" and request.POST.get("action") == "save":
+        rows = json.loads(request.POST.get("rows_json", "[]"))
+        deleted_ids = json.loads(request.POST.get("deleted_ids_json", "[]"))
+        actor = audit_actor_label(request)
+        ServiceMaster.objects.filter(pk__in=deleted_ids).delete()
+        for row in rows:
+            pk = str(row.get("id", "")).strip()
+            payload = {
+                "name": (row.get("name") or "").strip(),
+                "category_code": code_from_value("service_category", row.get("category_code")),
+                "status_code": code_from_value("service_status", row.get("status_code")),
+                "build_type_code": code_from_value("build_type", row.get("build_type_code")),
+                "itgc_code": code_from_value("yn_flag", row.get("itgc_code")),
+                "service_grade_code": code_from_value("service_grade", row.get("service_grade_code")),
+                "opened_at": parse_date(row.get("opened_at")),
+                "ended_at": parse_date(row.get("ended_at")),
+                "description": (row.get("description") or "").strip(),
+            }
+            obj = None
+            if pk:
+                obj = ServiceMaster.objects.get(pk=pk)
+                for k, v in payload.items():
+                    setattr(obj, k, v)
+                obj.updated_by = actor
+                obj.save()
+            elif payload["name"]:
+                obj = ServiceMaster.objects.create(**payload, created_by=actor, updated_by=actor)
+        messages.success(request, "서비스 마스터 저장 완료")
+        return redirect(build_list_redirect(request.path, query=query, page=page))
 
     paginator = Paginator(qs, 100)
     page_obj = paginator.get_page(request.GET.get("page"))
+    p_label_map = person_label_map()
+    for s in page_obj.object_list:
+        raw_sa = {}
+        for sa in s.service_attributes.all():
+            raw_sa[sa.attribute_code_id] = str(sa.value or "").strip()
+        s.person_slot_values = {
+            col["attribute_code"]: join_csv_tokens(
+                [
+                    p_label_map.get(pid, str(pid))
+                    for pid in parse_person_ids_from_attr_value(raw_sa.get(col["attribute_code"], ""))
+                ]
+            )
+            for col in SERVICE_PERSON_GRID_COLUMNS
+        }
     return render(
         request,
         "web/service_master_list.html",
@@ -796,12 +449,12 @@ def service_master_list(request):
             "items": page_obj.object_list,
             "page_obj": page_obj,
             "q": query,
-            "failed_ids": failed_ids,
-            "row_errors": row_errors,
-            "popup_error_summary": summarize_row_errors(row_errors),
-            "svc_category_codes": svc_category_codes,
-            "opr_division_codes": opr_division_codes,
-            "dev_type_codes": dev_type_codes,
+            "service_category_codes": code_values("service_category"),
+            "service_status_codes": code_values("service_status"),
+            "build_type_codes": code_values("build_type"),
+            "yn_flag_codes": code_values("yn_flag"),
+            "service_grade_codes": code_values("service_grade"),
+            "service_person_columns": service_person_columns_with_options(),
         },
     )
 
@@ -809,235 +462,126 @@ def service_master_list(request):
 @login_required
 @permission_required("masters.view_personmaster", raise_exception=True)
 def person_master_list(request):
-    sync_legacy_person_roles()
     query = request.GET.get("q", "").strip()
     page = request.GET.get("page", "").strip()
-    failed_ids = {int(x) for x in request.GET.get("failed_ids", "").split(",") if x.isdigit()}
-    row_errors = request.session.pop("row_errors_person", {})
-    qs = PersonMaster.objects.all().order_by("person_mgmt_no", "name")
+    qs = PersonMaster.objects.select_related("role_code", "status_code").order_by("person_mgmt_no")
     if query:
-        q = build_model_text_search_q(PersonMaster, query)
-        if query.strip() == "상주":
-            q |= Q(resident=True)
-        elif query.strip() == "비상주":
-            q |= Q(resident=False)
-        qs = qs.filter(q)
+        qs = qs.filter(build_model_text_search_q(PersonMaster, query))
 
     if request.GET.get("export") == "1":
-        cols = [
-            "person_mgmt_no",
-            "name",
-            "system_name",
-            "employee_no",
-            "role",
-            "resident",
-            "company",
-            "phone",
-            "email",
-            "ext_email",
-            "deployed_at",
-            "notes",
-        ]
-        rename_map = {
-            "person_mgmt_no": "담당자관리번호",
-            "name": "성명",
-            "system_name": "담당 서비스",
-            "employee_no": "사번",
-            "role": "역할",
-            "resident": "상주 여부",
-            "company": "소속 조직",
-            "phone": "연락처",
-            "email": "내부 메일",
-            "ext_email": "외부 메일",
-            "deployed_at": "투입 일자",
-            "notes": "비고",
+        role_to_acode = {c["role_code"]: c["attribute_code"] for c in SERVICE_PERSON_GRID_COLUMNS}
+        sa_lookup = {
+            (sa.service_id, sa.attribute_code_id): set(parse_person_ids_from_attr_value(sa.value))
+            for sa in ServiceAttribute.objects.filter(attribute_code_id__in=attribute_codes_for_grid())
         }
-        df = pd.DataFrame(list(qs.values(*cols)), columns=cols)
-        df["resident"] = df["resident"].apply(lambda x: "상주" if bool(x) else "비상주")
-        df = df.rename(columns=rename_map)
-        df = df[[rename_map[c] for c in cols]]
-        return to_excel_response(df, "person_master.xlsx")
-
-    if request.method == "POST":
-        action = request.POST.get("action", "")
-        if action == "import" and request.FILES.get("excel_file"):
-            df = pd.read_excel(request.FILES["excel_file"])
-            updated_count = 0
-            created_count = 0
-            skipped_count = 0
-            import_row_errors = {}
-            for excel_row_no, (_, row) in enumerate(df.iterrows(), start=2):
-                mgmt_no = str(get_row_value(row, ["person_mgmt_no", "담당자관리번호"], "")).strip()
-                person_name = str(get_row_value(row, ["name", "성명"], "")).strip()
-                if not person_name:
-                    skipped_count += 1
-                    import_row_errors[f"import_{excel_row_no}"] = f"{excel_row_no}행: 필수값 누락: 성명"
-                    continue
-                defaults = {
-                    "name": person_name,
-                    "system_name": str(
-                        get_row_value(row, ["system_name", "담당 서비스", "담당 시스템"], "")
-                    ).strip(),
-                    "employee_no": str(get_row_value(row, ["employee_no", "사번"], "")).strip(),
-                    "role": normalize_person_role(get_row_value(row, ["role", "역할"], "")),
-                    "resident": parse_resident_code(get_row_value(row, ["resident", "상주 여부"], "")),
-                    "company": str(get_row_value(row, ["company", "소속 조직"], "")).strip(),
-                    "phone": str(get_row_value(row, ["phone", "연락처"], "")).strip(),
-                    "email": str(get_row_value(row, ["email", "내부 메일"], "")).strip(),
-                    "ext_email": str(get_row_value(row, ["ext_email", "외부 메일"], "")).strip(),
-                    "deployed_at": parse_date(get_row_value(row, ["deployed_at", "투입 일자"], "")),
-                    "notes": str(get_row_value(row, ["notes", "비고"], "")).strip(),
+        services = list(ServiceMaster.objects.all().order_by("service_mgmt_no"))
+        rows = []
+        for p in qs:
+            my_acode = role_to_acode.get(getattr(p.role_code, "code", "") if p.role_code else "")
+            names = [svc.name for svc in services if my_acode and p.pk in sa_lookup.get((svc.pk, my_acode), set())]
+            rows.append(
+                {
+                    "담당자ID": p.person_mgmt_no,
+                    "성명": p.name,
+                    "사번": p.employee_no,
+                    "담당업무": join_csv_tokens(names),
+                    "역할": getattr(p.role_code, "code", ""),
+                    "회사명": p.company,
+                    "전화번호": p.phone,
+                    "내부메일": p.email,
+                    "외부메일": p.external_email,
+                    "상태": getattr(p.status_code, "code", ""),
+                    "투입일": p.deployed_at,
+                    "종료일": p.ended_at,
                 }
-                if defaults["role"] and defaults["role"] not in PERSON_ROLE_CODES:
-                    skipped_count += 1
-                    import_row_errors[f"import_{excel_row_no}"] = (
-                        f"{excel_row_no}행: 유효하지 않은 역할 코드: {defaults['role']}"
-                    )
-                    continue
-                if defaults["system_name"] and not ServiceMaster.objects.filter(name=defaults["system_name"]).exists():
-                    skipped_count += 1
-                    import_row_errors[f"import_{excel_row_no}"] = (
-                        f"{excel_row_no}행: 서비스 마스터 미등록 서비스명: {defaults['system_name']}"
-                    )
-                    continue
-                if defaults["resident"] is None:
-                    skipped_count += 1
-                    import_row_errors[f"import_{excel_row_no}"] = (
-                        f"{excel_row_no}행: 유효하지 않은 상주 여부 코드"
-                    )
-                    continue
-                if mgmt_no:
-                    existing = PersonMaster.objects.filter(person_mgmt_no=mgmt_no).first()
-                    if existing:
-                        for key, val in defaults.items():
-                            setattr(existing, key, val)
-                        existing.save()
-                        updated_count += 1
-                    elif defaults["name"]:
-                        PersonMaster.objects.create(person_mgmt_no=mgmt_no, **defaults)
-                        created_count += 1
-                    else:
-                        skipped_count += 1
-                elif defaults["name"]:
-                    PersonMaster.objects.create(**defaults)
-                    created_count += 1
-                else:
-                    skipped_count += 1
-            messages.success(
-                request,
-                f"엑셀 import 완료: 업데이트 {updated_count}건 / 인서트 {created_count}건 / 스킵 {skipped_count}건",
             )
-            if import_row_errors:
-                request.session["row_errors_person"] = import_row_errors
-            return redirect(build_list_redirect(request.path, query=query, page=page))
+        main_df = pd.DataFrame(rows)
+        ref_df = code_reference_df(["person_role", "person_status"])
+        return to_excel_multi_response({"담당자마스터": main_df, "코드참조": ref_df}, "person_master.xlsx")
 
-        if action == "save":
-            rows = json.loads(request.POST.get("rows_json", "[]"))
-            deleted_ids = json.loads(request.POST.get("deleted_ids_json", "[]"))
-            failed_ids = []
-            row_errors = {}
-            invalid_roles = set()
-            invalid_resident_values = set()
-            invalid_service_names = set()
-            if deleted_ids:
-                try:
-                    PersonMaster.objects.filter(pk__in=deleted_ids).delete()
-                except Exception as exc:
-                    for xid in [x for x in deleted_ids if str(x).isdigit()]:
-                        failed_ids.append(xid)
-                        row_errors[str(xid)] = f"삭제 실패: {build_error_message(exc)}"
-
-            for row in rows:
-                pk = str(row.get("id", "")).strip()
-                person_mgmt_no = str(row.get("person_mgmt_no", "")).strip()
-                name = str(row.get("name", "")).strip()
-                if not pk and not name:
-                    continue
-                deployed_at_raw = str(row.get("deployed_at") or "").strip()
-                deployed_at = parse_date(deployed_at_raw)
-                if deployed_at_raw and deployed_at is None:
-                    if pk:
-                        failed_ids.append(pk)
-                        row_errors[str(pk)] = "유효하지 않은 날짜"
-                    continue
+    if request.method == "POST" and request.POST.get("action") == "import":
+        up = request.FILES.get("excel_file")
+        if up:
+            df = pd.read_excel(up)
+            row_refs = []
+            for _, rec in df.fillna("").iterrows():
                 payload = {
-                    "name": name,
-                    "system_name": (row.get("system_name") or "").strip(),
-                    "employee_no": (row.get("employee_no") or "").strip(),
-                    "role": normalize_person_role(row.get("role")),
-                    "resident": parse_resident_code(row.get("resident")),
-                    "company": (row.get("company") or "").strip(),
-                    "phone": (row.get("phone") or "").strip(),
-                    "email": (row.get("email") or "").strip(),
-                    "ext_email": (row.get("ext_email") or "").strip(),
-                    "deployed_at": deployed_at,
-                    "notes": (row.get("notes") or "").strip(),
+                    "employee_no": str(rec.get("사번", "")).strip(),
+                    "name": str(rec.get("성명", "")).strip(),
+                    "role_code": code_from_value("person_role", rec.get("역할")),
+                    "company": str(rec.get("회사명", "")).strip(),
+                    "phone": str(rec.get("전화번호", "")).strip(),
+                    "email": str(rec.get("내부메일", "")).strip(),
+                    "external_email": str(rec.get("외부메일", "")).strip(),
+                    "status_code": code_from_value("person_status", rec.get("상태")),
+                    "deployed_at": parse_date(rec.get("투입일")),
+                    "ended_at": parse_date(rec.get("종료일")),
                 }
-                if payload["role"] and payload["role"] not in PERSON_ROLE_CODES:
-                    if pk:
-                        failed_ids.append(pk)
-                        row_errors[str(pk)] = "유효하지 않은 역할 코드"
-                    else:
-                        invalid_roles.add(payload["role"])
-                    continue
-                if payload["system_name"] and not ServiceMaster.objects.filter(name=payload["system_name"]).exists():
-                    if pk:
-                        failed_ids.append(pk)
-                        row_errors[str(pk)] = "서비스 마스터에 등록된 서비스명만 입력 가능합니다."
-                    else:
-                        invalid_service_names.add(payload["system_name"])
-                    continue
-                if payload["resident"] is None:
-                    resident_value = str(row.get("resident") or "").strip()
-                    if pk:
-                        failed_ids.append(pk)
-                        row_errors[str(pk)] = "유효하지 않은 상주 여부 코드"
-                    else:
-                        invalid_resident_values.add(resident_value or "(빈값)")
-                    continue
-                if pk:
-                    try:
-                        obj = PersonMaster.objects.get(pk=pk)
-                        for key, val in payload.items():
-                            setattr(obj, key, val)
-                        obj.save()
-                    except Exception as exc:
-                        failed_ids.append(pk)
-                        row_errors[str(pk)] = build_error_message(exc)
-                elif payload["name"]:
-                    try:
-                        PersonMaster.objects.create(person_mgmt_no=person_mgmt_no or None, **payload)
-                    except Exception as exc:
-                        if person_mgmt_no:
-                            dup = PersonMaster.objects.filter(person_mgmt_no=person_mgmt_no).values_list("pk", flat=True).first()
-                            if dup:
-                                failed_ids.append(dup)
-                                row_errors[str(dup)] = build_error_message(exc)
-            if invalid_roles:
-                messages.error(
-                    request,
-                    "유효하지 않은 역할 코드가 포함되어 저장할 수 없습니다: " + ", ".join(sorted(invalid_roles)),
-                )
-                row_errors["__global_role__"] = "유효하지 않은 역할 코드 입력"
-            if invalid_resident_values:
-                messages.error(
-                    request,
-                    "유효하지 않은 상주 여부 코드가 포함되어 저장할 수 없습니다: "
-                    + ", ".join(sorted(invalid_resident_values)),
-                )
-                row_errors["__global_resident__"] = "유효하지 않은 상주 여부 코드 입력"
-            if invalid_service_names:
-                messages.error(
-                    request,
-                    "서비스 마스터 미등록 서비스명으로 저장할 수 없습니다: "
-                    + ", ".join(sorted(invalid_service_names)),
-                )
-                row_errors["__global_service__"] = "서비스 마스터 미등록 서비스명 입력"
-            request.session["row_errors_person"] = row_errors
-            return redirect(build_list_redirect(request.path, query=query, page=page, failed_ids=failed_ids))
+                person_id = str(rec.get("담당자ID", "")).strip()
+                obj = PersonMaster.objects.filter(person_mgmt_no=person_id).first() if person_id else None
+                if obj:
+                    for k, v in payload.items():
+                        setattr(obj, k, v)
+                    obj.save()
+                    row_refs.append((obj, {"assigned_service_names": str(rec.get("담당업무", "")).strip()}))
+                elif payload["name"] and payload["employee_no"]:
+                    obj = PersonMaster.objects.create(**payload)
+                    row_refs.append((obj, {"assigned_service_names": str(rec.get("담당업무", "")).strip()}))
+            for person_obj, row in row_refs:
+                sync_person_service_assignments_from_row(person_obj, row)
+            messages.success(request, "담당자 마스터 엑셀 업로드 완료")
+        return redirect(build_list_redirect(request.path, query=query, page=page))
+
+    if request.method == "POST" and request.POST.get("action") == "save":
+        rows = json.loads(request.POST.get("rows_json", "[]"))
+        deleted_ids = json.loads(request.POST.get("deleted_ids_json", "[]"))
+        PersonMaster.objects.filter(pk__in=deleted_ids).delete()
+        row_refs = []
+        for row in rows:
+            pk = str(row.get("id", "")).strip()
+            payload = {
+                "employee_no": (row.get("employee_no") or "").strip(),
+                "name": (row.get("name") or "").strip(),
+                "role_code": code_from_value("person_role", row.get("role_code")),
+                "company": (row.get("company") or "").strip(),
+                "phone": (row.get("phone") or "").strip(),
+                "email": (row.get("email") or "").strip(),
+                "external_email": (row.get("external_email") or "").strip(),
+                "status_code": code_from_value("person_status", row.get("status_code")),
+                "deployed_at": parse_date(row.get("deployed_at")),
+                "ended_at": parse_date(row.get("ended_at")),
+            }
+            if pk:
+                obj = PersonMaster.objects.get(pk=pk)
+                for k, v in payload.items():
+                    setattr(obj, k, v)
+                obj.save()
+                row_refs.append((obj, row))
+            elif payload["name"]:
+                obj = PersonMaster.objects.create(**payload)
+                row_refs.append((obj, row))
+        for person_obj, row in row_refs:
+            sync_person_service_assignments_from_row(person_obj, row)
+        messages.success(request, "담당자 마스터 저장 완료")
+        return redirect(build_list_redirect(request.path, query=query, page=page))
 
     paginator = Paginator(qs, 100)
     page_obj = paginator.get_page(request.GET.get("page"))
+    sa_by_service_role = {}
+    for sa in ServiceAttribute.objects.filter(attribute_code_id__in=attribute_codes_for_grid()):
+        sa_by_service_role[(sa.service_id, sa.attribute_code_id)] = set(parse_person_ids_from_attr_value(sa.value))
+
+    service_rows = list(ServiceMaster.objects.all().order_by("service_mgmt_no"))
+    role_to_acode = {c["role_code"]: c["attribute_code"] for c in SERVICE_PERSON_GRID_COLUMNS}
+    for p in page_obj.object_list:
+        my_services = []
+        my_role = getattr(p.role_code, "code", "") if p.role_code else ""
+        my_acode = role_to_acode.get(my_role)
+        for svc in service_rows:
+            if my_acode and p.pk in sa_by_service_role.get((svc.pk, my_acode), set()):
+                my_services.append(svc.name)
+        p.assigned_service_names = join_csv_tokens(my_services)
+
     return render(
         request,
         "web/person_master_list.html",
@@ -1045,12 +589,116 @@ def person_master_list(request):
             "items": page_obj.object_list,
             "page_obj": page_obj,
             "q": query,
-            "person_role_codes": PERSON_ROLE_CODES,
-            "resident_codes": RESIDENT_CODES,
-            "service_names": list(ServiceMaster.objects.values_list("name", flat=True).order_by("name")),
-            "failed_ids": failed_ids,
-            "row_errors": row_errors,
-            "popup_error_summary": summarize_row_errors(row_errors),
+            "person_role_options": code_choice_options("person_role"),
+            "person_status_codes": code_values("person_status"),
+            "service_name_options": [s.name for s in service_rows],
+        },
+    )
+
+
+@login_required
+@permission_required("masters.view_configurationmaster", raise_exception=True)
+def configuration_master_list(request):
+    query = request.GET.get("q", "").strip()
+    page = request.GET.get("page", "").strip()
+    qs = ConfigurationMaster.objects.select_related(
+        "server_type_code", "operation_dev_code", "infra_type_code", "location_code", "network_zone_code"
+    ).order_by("asset_mgmt_no")
+    if query:
+        qs = qs.filter(build_model_text_search_q(ConfigurationMaster, query))
+
+    if request.GET.get("export") == "1":
+        rows = [
+            {
+                "구성ID": c.asset_mgmt_no,
+                "구성명": c.hostname,
+                "구성유형": getattr(c.server_type_code, "code", ""),
+                "운영/개발": getattr(c.operation_dev_code, "code", ""),
+                "인프라구분": getattr(c.infra_type_code, "code", ""),
+                "위치": getattr(c.location_code, "code", ""),
+                "네트워크": getattr(c.network_zone_code, "code", ""),
+                "IP": c.ip or "",
+                "Port": c.port,
+                "URL": c.url,
+            }
+            for c in qs
+        ]
+        main_df = pd.DataFrame(rows)
+        ref_df = code_reference_df(["config_type", "operation_type", "infra_type", "infra_location", "network_zone"])
+        return to_excel_multi_response({"구성정보마스터": main_df, "코드참조": ref_df}, "configuration_master.xlsx")
+
+    if request.method == "POST" and request.POST.get("action") == "import":
+        up = request.FILES.get("excel_file")
+        actor = audit_actor_label(request)
+        if up:
+            df = pd.read_excel(up)
+            for _, rec in df.fillna("").iterrows():
+                payload = {
+                    "hostname": str(rec.get("구성명", "")).strip(),
+                    "server_type_code": code_from_value("config_type", rec.get("구성유형")),
+                    "operation_dev_code": code_from_value("operation_type", rec.get("운영/개발")),
+                    "infra_type_code": code_from_value("infra_type", rec.get("인프라구분")),
+                    "location_code": code_from_value("infra_location", rec.get("위치")),
+                    "network_zone_code": code_from_value("network_zone", rec.get("네트워크")),
+                    "ip": str(rec.get("IP", "")).strip() or None,
+                    "port": str(rec.get("Port", "")).strip(),
+                    "url": str(rec.get("URL", "")).strip(),
+                }
+                cfg_id = str(rec.get("구성ID", "")).strip()
+                obj = ConfigurationMaster.objects.filter(asset_mgmt_no=cfg_id).first() if cfg_id else None
+                if obj:
+                    for k, v in payload.items():
+                        setattr(obj, k, v)
+                    obj.updated_by = actor
+                    obj.save()
+                elif payload["hostname"]:
+                    ConfigurationMaster.objects.create(**payload, created_by=actor, updated_by=actor)
+            messages.success(request, "구성정보 마스터 엑셀 업로드 완료")
+        return redirect(build_list_redirect(request.path, query=query, page=page))
+
+    if request.method == "POST" and request.POST.get("action") == "save":
+        rows = json.loads(request.POST.get("rows_json", "[]"))
+        deleted_ids = json.loads(request.POST.get("deleted_ids_json", "[]"))
+        actor = audit_actor_label(request)
+        ConfigurationMaster.objects.filter(pk__in=deleted_ids).delete()
+        for row in rows:
+            pk = str(row.get("id", "")).strip()
+            payload = {
+                "hostname": (row.get("hostname") or "").strip(),
+                "server_type_code": code_from_value("config_type", row.get("server_type_code")),
+                "operation_dev_code": code_from_value("operation_type", row.get("operation_dev_code")),
+                "infra_type_code": code_from_value("infra_type", row.get("infra_type_code")),
+                "location_code": code_from_value("infra_location", row.get("location_code")),
+                "network_zone_code": code_from_value("network_zone", row.get("network_zone_code")),
+                "ip": (row.get("ip") or "").strip() or None,
+                "port": (row.get("port") or "").strip(),
+                "url": (row.get("url") or "").strip(),
+            }
+            if pk:
+                obj = ConfigurationMaster.objects.get(pk=pk)
+                for k, v in payload.items():
+                    setattr(obj, k, v)
+                obj.updated_by = actor
+                obj.save()
+            elif payload["hostname"]:
+                ConfigurationMaster.objects.create(**payload, created_by=actor, updated_by=actor)
+        messages.success(request, "구성정보 마스터 저장 완료")
+        return redirect(build_list_redirect(request.path, query=query, page=page))
+
+    paginator = Paginator(qs, 100)
+    page_obj = paginator.get_page(request.GET.get("page"))
+    return render(
+        request,
+        "web/configuration_master_list.html",
+        {
+            "items": page_obj.object_list,
+            "page_obj": page_obj,
+            "q": query,
+            "config_type_codes": code_values("config_type"),
+            "operation_type_codes": code_values("operation_type"),
+            "infra_type_codes": code_values("infra_type"),
+            "infra_location_codes": code_values("infra_location"),
+            "network_zone_codes": code_values("network_zone"),
         },
     )
 
@@ -1060,508 +708,84 @@ def person_master_list(request):
 def component_master_list(request):
     query = request.GET.get("q", "").strip()
     page = request.GET.get("page", "").strip()
-    failed_ids = {int(x) for x in request.GET.get("failed_ids", "").split(",") if x.isdigit()}
-    row_errors = request.session.pop("row_errors_component", {})
-    svr_type_codes = build_code_values("svr_type")
-    svr_type_code_set = set(svr_type_codes)
-    devops_codes = build_code_values("devops")
-    devops_code_set = set(devops_codes)
-    infra_type_codes = build_code_values("infra_type")
-    infra_type_code_set = set(infra_type_codes)
-    infra_loc_codes = build_code_values("infra_loc")
-    infra_loc_code_set = set(infra_loc_codes)
-    network_zone_codes = build_code_values("network_zone")
-    network_zone_code_set = set(network_zone_codes)
-    language_names = build_component_group_display_names("language")
-    runtime_names = build_component_group_display_names("runtime")
-    framework_names = build_component_group_display_names("framework")
-    middleware_names = build_component_group_display_names("middleware")
-    os_names = build_component_group_display_names("os")
-    db_names = build_component_group_display_names("db")
-    language_name_set = set(language_names)
-    runtime_name_set = set(runtime_names)
-    framework_name_set = set(framework_names)
-    middleware_name_set = set(middleware_names)
-    os_name_set = set(os_names)
-    db_name_set = set(db_names)
-    aws_location_code = "AWS"
-    qs = Component.objects.all().order_by("asset_mgmt_no")
+    qs = Component.objects.select_related("component_type_code", "support_status_code").order_by("component_mgmt_no")
     if query:
         qs = qs.filter(build_model_text_search_q(Component, query))
 
     if request.GET.get("export") == "1":
-        cols = [
-            "asset_mgmt_no",
-            "hostname",
-            "system_name",
-            "server_type",
-            "operation_dev",
-            "platform_type",
-            "location",
-            "network_zone",
-            "ip",
-            "port",
-            "mw",
-            "runtime",
-            "os_dbms",
-            "middleware",
-            "os",
-            "db",
-            "url_or_db_name",
-            "ssl_domain",
-            "cert_format",
-            "remark1",
-            "remark2",
+        rows = [
+            {
+                "컴포넌트ID": c.component_mgmt_no,
+                "컴포넌트명": c.product_name,
+                "버전": c.version,
+                "유형": getattr(c.component_type_code, "code", ""),
+                "벤더명": c.vendor_name,
+                "CPE": c.cpe_name,
+                "EOS": c.eos_date,
+                "EOL": c.eol_date,
+                "지원여부": getattr(c.support_status_code, "code", ""),
+            }
+            for c in qs
         ]
-        rename_map = {
-            "asset_mgmt_no": "자산관리번호",
-            "hostname": "Hostname",
-            "system_name": "시스템명",
-            "server_type": "서버 구분",
-            "operation_dev": "운영/개발",
-            "platform_type": "인프라 구분",
-            "location": "위치",
-            "network_zone": "네트웍 구분",
-            "ip": "IP",
-            "port": "Port",
-            "mw": "Language",
-            "runtime": "Runtime",
-            "os_dbms": "Framework",
-            "middleware": "Middleware",
-            "os": "OS",
-            "db": "DB",
-            "url_or_db_name": "URL/DB명",
-            "ssl_domain": "SSL 도메인",
-            "cert_format": "인증서 포맷",
-            "remark1": "비고1",
-            "remark2": "비고2",
-        }
-        df = pd.DataFrame(list(qs.values(*cols)), columns=cols).rename(columns=rename_map)
-        df = df[[rename_map[c] for c in cols]]
-        return to_excel_response(df, "component_master.xlsx")
+        main_df = pd.DataFrame(rows)
+        ref_df = code_reference_df(["component_type", "support_status"])
+        return to_excel_multi_response({"컴포넌트마스터": main_df, "코드참조": ref_df}, "component_master.xlsx")
 
-    if request.method == "POST":
-        action = request.POST.get("action", "")
-        if action == "import" and request.FILES.get("excel_file"):
-            df = pd.read_excel(request.FILES["excel_file"])
-            updated_count = 0
-            created_count = 0
-            skipped_count = 0
-            import_row_errors = {}
-            for excel_row_no, (_, row) in enumerate(df.iterrows(), start=2):
-                mgmt_no = str(get_row_value(row, ["asset_mgmt_no", "자산관리번호"], "")).strip()
-                system_name = str(get_row_value(row, ["system_name", "시스템명"], "")).strip()
-                hostname = str(get_row_value(row, ["hostname", "Hostname"], "")).strip()
-                if not system_name and not hostname:
-                    skipped_count += 1
-                    import_row_errors[f"import_{excel_row_no}"] = (
-                        f"{excel_row_no}행: 필수값 누락: 시스템명, Hostname"
-                    )
-                    continue
-                if not system_name:
-                    skipped_count += 1
-                    import_row_errors[f"import_{excel_row_no}"] = f"{excel_row_no}행: 필수값 누락: 시스템명"
-                    continue
-                if not hostname:
-                    skipped_count += 1
-                    import_row_errors[f"import_{excel_row_no}"] = f"{excel_row_no}행: 필수값 누락: Hostname"
-                    continue
-                if system_name and not ServiceMaster.objects.filter(name=system_name).exists():
-                    skipped_count += 1
-                    import_row_errors[f"import_{excel_row_no}"] = (
-                        f"{excel_row_no}행: 서비스 마스터 미등록 시스템명: {system_name}"
-                    )
-                    continue
-                server_type = str(get_row_value(row, ["server_type", "서버 구분"], "")).strip()
-                if server_type and server_type not in svr_type_code_set:
-                    skipped_count += 1
-                    import_row_errors[f"import_{excel_row_no}"] = (
-                        f"{excel_row_no}행: 유효하지 않은 서버 구분 코드: {server_type}"
-                    )
-                    continue
-                operation_dev = str(get_row_value(row, ["operation_dev", "운영/개발"], "")).strip()
-                if operation_dev and operation_dev not in devops_code_set:
-                    skipped_count += 1
-                    import_row_errors[f"import_{excel_row_no}"] = (
-                        f"{excel_row_no}행: 유효하지 않은 운영/개발 코드: {operation_dev}"
-                    )
-                    continue
-                platform_type = str(get_row_value(row, ["platform_type", "인프라 구분", "플랫폼 구분"], "")).strip()
-                if platform_type and platform_type not in infra_type_code_set:
-                    skipped_count += 1
-                    import_row_errors[f"import_{excel_row_no}"] = (
-                        f"{excel_row_no}행: 유효하지 않은 인프라 구분 코드: {platform_type}"
-                    )
-                    continue
-                network_zone = str(get_row_value(row, ["network_zone", "네트웍 구분"], "")).strip()
-                if network_zone and network_zone not in network_zone_code_set:
-                    skipped_count += 1
-                    import_row_errors[f"import_{excel_row_no}"] = (
-                        f"{excel_row_no}행: 유효하지 않은 네트웍 구분 코드: {network_zone}"
-                    )
-                    continue
-                location = str(get_row_value(row, ["location", "위치"], "")).strip()
-                if platform_type == aws_location_code:
-                    location = aws_location_code
-                if location and location not in infra_loc_code_set:
-                    skipped_count += 1
-                    import_row_errors[f"import_{excel_row_no}"] = (
-                        f"{excel_row_no}행: 유효하지 않은 위치 코드: {location}"
-                    )
-                    continue
-                if platform_type and platform_type != aws_location_code and location == aws_location_code:
-                    skipped_count += 1
-                    import_row_errors[f"import_{excel_row_no}"] = (
-                        f"{excel_row_no}행: 인프라 구분이 AWS가 아니면 위치는 AWS를 선택할 수 없습니다."
-                    )
-                    continue
-                language_val = str(get_row_value(row, ["mw", "Language", "MW"], "")).strip()
-                runtime_val = str(get_row_value(row, ["runtime", "Runtime"], "")).strip()
-                framework_val = str(get_row_value(row, ["os_dbms", "Framework", "OS/DBMS"], "")).strip()
-                middleware_val = str(get_row_value(row, ["middleware", "Middleware"], "")).strip()
-                os_val = str(get_row_value(row, ["os", "OS"], "")).strip()
-                db_val = str(get_row_value(row, ["db", "DB"], "")).strip()
-                if language_val and language_val not in language_name_set:
-                    skipped_count += 1
-                    import_row_errors[f"import_{excel_row_no}"] = (
-                        f"{excel_row_no}행: Language는 language 그룹의 등록값만 입력 가능합니다: {language_val}"
-                    )
-                    continue
-                if runtime_val and runtime_val not in runtime_name_set:
-                    skipped_count += 1
-                    import_row_errors[f"import_{excel_row_no}"] = (
-                        f"{excel_row_no}행: Runtime은 runtime 그룹의 등록값만 입력 가능합니다: {runtime_val}"
-                    )
-                    continue
-                if framework_val and framework_val not in framework_name_set:
-                    skipped_count += 1
-                    import_row_errors[f"import_{excel_row_no}"] = (
-                        f"{excel_row_no}행: Framework는 framework 그룹의 등록값만 입력 가능합니다: {framework_val}"
-                    )
-                    continue
-                if middleware_val and middleware_val not in middleware_name_set:
-                    skipped_count += 1
-                    import_row_errors[f"import_{excel_row_no}"] = (
-                        f"{excel_row_no}행: Middleware는 middleware 그룹의 등록값만 입력 가능합니다: {middleware_val}"
-                    )
-                    continue
-                if os_val and os_val not in os_name_set:
-                    skipped_count += 1
-                    import_row_errors[f"import_{excel_row_no}"] = (
-                        f"{excel_row_no}행: OS는 os 그룹의 등록값만 입력 가능합니다: {os_val}"
-                    )
-                    continue
-                if db_val and db_val not in db_name_set:
-                    skipped_count += 1
-                    import_row_errors[f"import_{excel_row_no}"] = (
-                        f"{excel_row_no}행: DB는 db 그룹의 등록값만 입력 가능합니다: {db_val}"
-                    )
-                    continue
-                defaults = {
-                    "hostname": hostname,
-                    "system_name": system_name,
-                    "server_type": normalize_server_type_by_hostname(hostname, server_type),
-                    "operation_dev": operation_dev,
-                    "platform_type": platform_type,
-                    "location": location,
-                    "network_zone": network_zone,
-                    "ip": (str(get_row_value(row, ["ip", "IP"], "")).strip() or None),
-                    "port": str(get_row_value(row, ["port", "Port"], "")).strip(),
-                    "mw": language_val,
-                    "runtime": runtime_val,
-                    "os_dbms": framework_val,
-                    "middleware": middleware_val,
-                    "os": os_val,
-                    "db": db_val,
-                    "url_or_db_name": str(get_row_value(row, ["url_or_db_name", "URL/DB명"], "")).strip(),
-                    "ssl_domain": str(get_row_value(row, ["ssl_domain", "SSL 도메인"], "")).strip(),
-                    "cert_format": str(get_row_value(row, ["cert_format", "인증서 포맷"], "")).strip(),
-                    "remark1": str(get_row_value(row, ["remark1", "비고1"], "")).strip(),
-                    "remark2": str(get_row_value(row, ["remark2", "비고2"], "")).strip(),
-                }
-                if mgmt_no:
-                    existing = Component.objects.filter(asset_mgmt_no=mgmt_no).first()
-                    if existing:
-                        for key, val in defaults.items():
-                            setattr(existing, key, val)
-                        existing.save()
-                        updated_count += 1
-                    elif defaults["hostname"]:
-                        Component.objects.create(asset_mgmt_no=mgmt_no, **defaults)
-                        created_count += 1
-                    else:
-                        skipped_count += 1
-                elif defaults["hostname"]:
-                    Component.objects.create(**defaults)
-                    created_count += 1
-                else:
-                    skipped_count += 1
-            messages.success(
-                request,
-                f"엑셀 import 완료: 업데이트 {updated_count}건 / 인서트 {created_count}건 / 스킵 {skipped_count}건",
-            )
-            if import_row_errors:
-                request.session["row_errors_component"] = import_row_errors
-            return redirect(build_list_redirect(request.path, query=query, page=page))
-
-        if action == "save":
-            rows = json.loads(request.POST.get("rows_json", "[]"))
-            deleted_ids = json.loads(request.POST.get("deleted_ids_json", "[]"))
-            failed_ids = []
-            row_errors = {}
-            invalid_system_names = set()
-            invalid_svr_type_codes = set()
-            invalid_devops_codes = set()
-            invalid_infra_type_codes = set()
-            invalid_infra_loc_codes = set()
-            invalid_aws_dependency_rows = set()
-            invalid_network_zone_codes = set()
-            invalid_language_values = set()
-            invalid_runtime_values = set()
-            invalid_framework_values = set()
-            invalid_middleware_values = set()
-            invalid_os_values = set()
-            invalid_db_values = set()
-            if deleted_ids:
-                try:
-                    Component.objects.filter(pk__in=deleted_ids).delete()
-                except Exception as exc:
-                    for xid in [x for x in deleted_ids if str(x).isdigit()]:
-                        failed_ids.append(xid)
-                        row_errors[str(xid)] = f"삭제 실패: {build_error_message(exc)}"
-
-            for row in rows:
-                pk = str(row.get("id", "")).strip()
-                asset_mgmt_no = str(row.get("asset_mgmt_no", "")).strip()
-                hostname = str(row.get("hostname", "")).strip()
-                system_name = str(row.get("system_name", "")).strip()
-                if not pk and not hostname:
-                    continue
-                if system_name and not ServiceMaster.objects.filter(name=system_name).exists():
-                    if pk:
-                        failed_ids.append(pk)
-                        row_errors[str(pk)] = "서비스 마스터에 등록된 시스템명만 입력 가능합니다."
-                    else:
-                        invalid_system_names.add(system_name)
-                    continue
+    if request.method == "POST" and request.POST.get("action") == "import":
+        up = request.FILES.get("excel_file")
+        actor = audit_actor_label(request)
+        if up:
+            df = pd.read_excel(up)
+            for _, rec in df.fillna("").iterrows():
                 payload = {
-                    "hostname": hostname,
-                    "system_name": system_name,
-                    "server_type": (row.get("server_type") or "").strip(),
-                    "operation_dev": (row.get("operation_dev") or "").strip(),
-                    "platform_type": (row.get("platform_type") or "").strip(),
-                    "location": (row.get("location") or "").strip(),
-                    "network_zone": (row.get("network_zone") or "").strip(),
-                    "ip": (row.get("ip") or "").strip() or None,
-                    "port": (row.get("port") or "").strip(),
-                    "mw": (row.get("mw") or "").strip(),
-                    "runtime": (row.get("runtime") or "").strip(),
-                    "os_dbms": (row.get("os_dbms") or "").strip(),
-                    "middleware": (row.get("middleware") or "").strip(),
-                    "os": (row.get("os") or "").strip(),
-                    "db": (row.get("db") or "").strip(),
-                    "url_or_db_name": (row.get("url_or_db_name") or "").strip(),
-                    "ssl_domain": (row.get("ssl_domain") or "").strip(),
-                    "cert_format": (row.get("cert_format") or "").strip(),
-                    "remark1": (row.get("remark1") or "").strip(),
-                    "remark2": (row.get("remark2") or "").strip(),
+                    "product_name": str(rec.get("컴포넌트명", "")).strip(),
+                    "version": str(rec.get("버전", "")).strip(),
+                    "component_type_code": code_from_value("component_type", rec.get("유형")),
+                    "vendor_name": str(rec.get("벤더명", "")).strip(),
+                    "cpe_name": str(rec.get("CPE", "")).strip(),
+                    "eos_date": parse_date(rec.get("EOS")),
+                    "eol_date": parse_date(rec.get("EOL")),
+                    "support_status_code": code_from_value("support_status", rec.get("지원여부")),
                 }
-                payload["server_type"] = normalize_server_type_by_hostname(payload["hostname"], payload["server_type"])
-                if payload["platform_type"] == aws_location_code:
-                    payload["location"] = aws_location_code
-                if payload["server_type"] and payload["server_type"] not in svr_type_code_set:
-                    if pk:
-                        failed_ids.append(pk)
-                        row_errors[str(pk)] = "유효하지 않은 서버 구분 코드"
-                    else:
-                        invalid_svr_type_codes.add(payload["server_type"])
-                    continue
-                if payload["operation_dev"] and payload["operation_dev"] not in devops_code_set:
-                    if pk:
-                        failed_ids.append(pk)
-                        row_errors[str(pk)] = "유효하지 않은 운영/개발 코드"
-                    else:
-                        invalid_devops_codes.add(payload["operation_dev"])
-                    continue
-                if payload["platform_type"] and payload["platform_type"] not in infra_type_code_set:
-                    if pk:
-                        failed_ids.append(pk)
-                        row_errors[str(pk)] = "유효하지 않은 인프라 구분 코드"
-                    else:
-                        invalid_infra_type_codes.add(payload["platform_type"])
-                    continue
-                if payload["network_zone"] and payload["network_zone"] not in network_zone_code_set:
-                    if pk:
-                        failed_ids.append(pk)
-                        row_errors[str(pk)] = "유효하지 않은 네트웍 구분 코드"
-                    else:
-                        invalid_network_zone_codes.add(payload["network_zone"])
-                    continue
-                if payload["location"] and payload["location"] not in infra_loc_code_set:
-                    if pk:
-                        failed_ids.append(pk)
-                        row_errors[str(pk)] = "유효하지 않은 위치 코드"
-                    else:
-                        invalid_infra_loc_codes.add(payload["location"])
-                    continue
-                if payload["platform_type"] and payload["platform_type"] != aws_location_code and payload["location"] == aws_location_code:
-                    if pk:
-                        failed_ids.append(pk)
-                        row_errors[str(pk)] = "인프라 구분이 AWS가 아니면 위치는 AWS를 선택할 수 없습니다."
-                    else:
-                        invalid_aws_dependency_rows.add("location=AWS")
-                    continue
-                if payload["mw"] and payload["mw"] not in language_name_set:
-                    if pk:
-                        failed_ids.append(pk)
-                        row_errors[str(pk)] = "Language는 language 그룹의 등록값만 입력 가능합니다."
-                    else:
-                        invalid_language_values.add(payload["mw"])
-                    continue
-                if payload["runtime"] and payload["runtime"] not in runtime_name_set:
-                    if pk:
-                        failed_ids.append(pk)
-                        row_errors[str(pk)] = "Runtime은 runtime 그룹의 등록값만 입력 가능합니다."
-                    else:
-                        invalid_runtime_values.add(payload["runtime"])
-                    continue
-                if payload["os_dbms"] and payload["os_dbms"] not in framework_name_set:
-                    if pk:
-                        failed_ids.append(pk)
-                        row_errors[str(pk)] = "Framework는 framework 그룹의 등록값만 입력 가능합니다."
-                    else:
-                        invalid_framework_values.add(payload["os_dbms"])
-                    continue
-                if payload["middleware"] and payload["middleware"] not in middleware_name_set:
-                    if pk:
-                        failed_ids.append(pk)
-                        row_errors[str(pk)] = "Middleware는 middleware 그룹의 등록값만 입력 가능합니다."
-                    else:
-                        invalid_middleware_values.add(payload["middleware"])
-                    continue
-                if payload["os"] and payload["os"] not in os_name_set:
-                    if pk:
-                        failed_ids.append(pk)
-                        row_errors[str(pk)] = "OS는 os 그룹의 등록값만 입력 가능합니다."
-                    else:
-                        invalid_os_values.add(payload["os"])
-                    continue
-                if payload["db"] and payload["db"] not in db_name_set:
-                    if pk:
-                        failed_ids.append(pk)
-                        row_errors[str(pk)] = "DB는 db 그룹의 등록값만 입력 가능합니다."
-                    else:
-                        invalid_db_values.add(payload["db"])
-                    continue
-                if pk:
-                    try:
-                        comp = Component.objects.get(pk=pk)
-                        for key, val in payload.items():
-                            setattr(comp, key, val)
-                        comp.save()
-                    except Exception as exc:
-                        failed_ids.append(pk)
-                        row_errors[str(pk)] = build_error_message(exc)
-                elif payload["hostname"]:
-                    try:
-                        Component.objects.create(asset_mgmt_no=asset_mgmt_no or None, **payload)
-                    except Exception as exc:
-                        if asset_mgmt_no:
-                            dup = Component.objects.filter(asset_mgmt_no=asset_mgmt_no).values_list("pk", flat=True).first()
-                            if dup:
-                                failed_ids.append(dup)
-                                row_errors[str(dup)] = build_error_message(exc)
-            if invalid_system_names:
-                messages.error(
-                    request,
-                    "서비스 마스터 미등록 시스템명으로 저장할 수 없습니다: " + ", ".join(sorted(invalid_system_names)),
-                )
-                row_errors["__global__"] = "서비스 마스터 미등록 시스템명 입력"
-            if invalid_svr_type_codes:
-                messages.error(
-                    request,
-                    "유효하지 않은 서버 구분 코드가 포함되어 저장할 수 없습니다: "
-                    + ", ".join(sorted(invalid_svr_type_codes)),
-                )
-                row_errors["__global_svr_type__"] = "유효하지 않은 서버 구분 코드 입력"
-            if invalid_devops_codes:
-                messages.error(
-                    request,
-                    "유효하지 않은 운영/개발 코드가 포함되어 저장할 수 없습니다: "
-                    + ", ".join(sorted(invalid_devops_codes)),
-                )
-                row_errors["__global_devops__"] = "유효하지 않은 운영/개발 코드 입력"
-            if invalid_infra_type_codes:
-                messages.error(
-                    request,
-                    "유효하지 않은 인프라 구분 코드가 포함되어 저장할 수 없습니다: "
-                    + ", ".join(sorted(invalid_infra_type_codes)),
-                )
-                row_errors["__global_infra_type__"] = "유효하지 않은 인프라 구분 코드 입력"
-            if invalid_infra_loc_codes:
-                messages.error(
-                    request,
-                    "유효하지 않은 위치 코드가 포함되어 저장할 수 없습니다: "
-                    + ", ".join(sorted(invalid_infra_loc_codes)),
-                )
-                row_errors["__global_infra_loc__"] = "유효하지 않은 위치 코드 입력"
-            if invalid_aws_dependency_rows:
-                messages.error(
-                    request,
-                    "인프라 구분이 AWS가 아닐 때 위치는 AWS를 선택할 수 없습니다.",
-                )
-                row_errors["__global_infra_aws__"] = "인프라/위치 의존성 오류"
-            if invalid_network_zone_codes:
-                messages.error(
-                    request,
-                    "유효하지 않은 네트웍 구분 코드가 포함되어 저장할 수 없습니다: "
-                    + ", ".join(sorted(invalid_network_zone_codes)),
-                )
-                row_errors["__global_network_zone__"] = "유효하지 않은 네트웍 구분 코드 입력"
-            if invalid_language_values:
-                messages.error(
-                    request,
-                    "Language는 language 그룹 등록값만 입력할 수 있습니다: "
-                    + ", ".join(sorted(invalid_language_values)),
-                )
-                row_errors["__global_language__"] = "유효하지 않은 Language 입력"
-            if invalid_runtime_values:
-                messages.error(
-                    request,
-                    "Runtime은 runtime 그룹 등록값만 입력할 수 있습니다: "
-                    + ", ".join(sorted(invalid_runtime_values)),
-                )
-                row_errors["__global_runtime__"] = "유효하지 않은 Runtime 입력"
-            if invalid_framework_values:
-                messages.error(
-                    request,
-                    "Framework는 framework 그룹 등록값만 입력할 수 있습니다: "
-                    + ", ".join(sorted(invalid_framework_values)),
-                )
-                row_errors["__global_framework__"] = "유효하지 않은 Framework 입력"
-            if invalid_middleware_values:
-                messages.error(
-                    request,
-                    "Middleware는 middleware 그룹 등록값만 입력할 수 있습니다: "
-                    + ", ".join(sorted(invalid_middleware_values)),
-                )
-                row_errors["__global_middleware__"] = "유효하지 않은 Middleware 입력"
-            if invalid_os_values:
-                messages.error(
-                    request,
-                    "OS는 os 그룹 등록값만 입력할 수 있습니다: "
-                    + ", ".join(sorted(invalid_os_values)),
-                )
-                row_errors["__global_os__"] = "유효하지 않은 OS 입력"
-            if invalid_db_values:
-                messages.error(
-                    request,
-                    "DB는 db 그룹 등록값만 입력할 수 있습니다: "
-                    + ", ".join(sorted(invalid_db_values)),
-                )
-                row_errors["__global_db__"] = "유효하지 않은 DB 입력"
-            request.session["row_errors_component"] = row_errors
-            return redirect(build_list_redirect(request.path, query=query, page=page, failed_ids=failed_ids))
+                cmp_id = str(rec.get("컴포넌트ID", "")).strip()
+                obj = Component.objects.filter(component_mgmt_no=cmp_id).first() if cmp_id else None
+                if obj:
+                    for k, v in payload.items():
+                        setattr(obj, k, v)
+                    obj.updated_by = actor
+                    obj.save()
+                elif payload["product_name"]:
+                    Component.objects.create(**payload, created_by=actor, updated_by=actor)
+            messages.success(request, "컴포넌트 마스터 엑셀 업로드 완료")
+        return redirect(build_list_redirect(request.path, query=query, page=page))
+
+    if request.method == "POST" and request.POST.get("action") == "save":
+        rows = json.loads(request.POST.get("rows_json", "[]"))
+        deleted_ids = json.loads(request.POST.get("deleted_ids_json", "[]"))
+        actor = audit_actor_label(request)
+        Component.objects.filter(pk__in=deleted_ids).delete()
+        for row in rows:
+            pk = str(row.get("id", "")).strip()
+            payload = {
+                "component_type_code": code_from_value("component_type", row.get("component_type_code")),
+                "product_name": (row.get("product_name") or "").strip(),
+                "version": (row.get("version") or "").strip(),
+                "vendor_name": (row.get("vendor_name") or "").strip(),
+                "cpe_name": (row.get("cpe_name") or "").strip(),
+                "eos_date": parse_date(row.get("eos_date")),
+                "eol_date": parse_date(row.get("eol_date")),
+                "support_status_code": code_from_value("support_status", row.get("support_status_code")),
+            }
+            if pk:
+                obj = Component.objects.get(pk=pk)
+                for k, v in payload.items():
+                    setattr(obj, k, v)
+                obj.updated_by = actor
+                obj.save()
+            elif payload["product_name"]:
+                Component.objects.create(**payload, created_by=actor, updated_by=actor)
+        messages.success(request, "컴포넌트 마스터 저장 완료")
+        return redirect(build_list_redirect(request.path, query=query, page=page))
 
     paginator = Paginator(qs, 100)
     page_obj = paginator.get_page(request.GET.get("page"))
@@ -1572,288 +796,8 @@ def component_master_list(request):
             "items": page_obj.object_list,
             "page_obj": page_obj,
             "q": query,
-            "failed_ids": failed_ids,
-            "row_errors": row_errors,
-            "popup_error_summary": summarize_row_errors(row_errors),
-            "service_names": list(ServiceMaster.objects.values_list("name", flat=True).order_by("name")),
-            "svr_type_codes": svr_type_codes,
-            "devops_codes": devops_codes,
-            "infra_type_codes": infra_type_codes,
-            "infra_loc_codes": infra_loc_codes,
-            "network_zone_codes": network_zone_codes,
-            "language_names": language_names,
-            "runtime_names": runtime_names,
-            "framework_names": framework_names,
-            "middleware_names": middleware_names,
-            "os_names": os_names,
-            "db_names": db_names,
-        },
-    )
-
-
-@login_required
-@permission_required("masters.view_componentmaster", raise_exception=True)
-def component_item_master_list(request):
-    query = request.GET.get("q", "").strip()
-    page = request.GET.get("page", "").strip()
-    failed_ids = {int(x) for x in request.GET.get("failed_ids", "").split(",") if x.isdigit()}
-    row_errors = request.session.pop("row_errors_component_item", {})
-    hosts_by_service = build_hosts_by_service()
-    product_bundle = build_component_master_product_bundle()
-    component_product_codes = product_bundle["product_codes"]
-    qs = ComponentMaster.objects.all().order_by("component_mgmt_no")
-    if query:
-        qs = qs.filter(build_model_text_search_q(ComponentMaster, query))
-
-    if request.GET.get("export") == "1":
-        cols = [
-            "component_mgmt_no",
-            "system_name",
-            "hostname",
-            "url_or_db_name",
-            "server_type",
-            "remark1",
-            "remark2",
-        ]
-        rename_map = {
-            "component_mgmt_no": "컴포넌트 번호",
-            "hostname": "Hostname",
-            "system_name": "서비스명",
-            "server_type": "컴포넌트구분",
-            "url_or_db_name": "컴포넌트명",
-            "remark1": "비고1",
-            "remark2": "비고2",
-        }
-        df = pd.DataFrame(list(qs.values(*cols)), columns=cols).rename(columns=rename_map)
-        df = df[[rename_map[c] for c in cols]]
-        return to_excel_response(df, "component_item_master.xlsx")
-
-    if request.method == "POST":
-        action = request.POST.get("action", "")
-        if action == "import" and request.FILES.get("excel_file"):
-            df = pd.read_excel(request.FILES["excel_file"])
-            updated_count = 0
-            created_count = 0
-            skipped_count = 0
-            import_row_errors = {}
-            for excel_row_no, (_, row) in enumerate(df.iterrows(), start=2):
-                mgmt_no = str(
-                    get_row_value(
-                        row,
-                        [
-                            "component_mgmt_no",
-                            "컴포넌트번호",
-                            "컴포넌트 번호",
-                            "컴포넌트관리번호",
-                        ],
-                        "",
-                    )
-                ).strip()
-                system_name = str(
-                    get_row_value(row, ["system_name", "시스템명", "서비스명"], "")
-                ).strip()
-                hostname = str(get_row_value(row, ["hostname", "Hostname"], "")).strip()
-                if not system_name and not hostname:
-                    skipped_count += 1
-                    import_row_errors[f"import_{excel_row_no}"] = (
-                        f"{excel_row_no}행: 필수값 누락: 서비스명, Hostname"
-                    )
-                    continue
-                if not system_name:
-                    skipped_count += 1
-                    import_row_errors[f"import_{excel_row_no}"] = f"{excel_row_no}행: 필수값 누락: 서비스명"
-                    continue
-                if not hostname:
-                    skipped_count += 1
-                    import_row_errors[f"import_{excel_row_no}"] = f"{excel_row_no}행: 필수값 누락: Hostname"
-                    continue
-                if system_name and not ServiceMaster.objects.filter(name=system_name).exists():
-                    skipped_count += 1
-                    import_row_errors[f"import_{excel_row_no}"] = (
-                        f"{excel_row_no}행: 서비스 마스터 미등록 서비스명: {system_name}"
-                    )
-                    continue
-                url_or_db_name_raw = str(
-                    get_row_value(row, ["url_or_db_name", "URL/DB명", "컴포넌트명"], "")
-                ).strip()
-                canon_name, name_ok = resolve_component_master_product_input(
-                    url_or_db_name_raw, product_bundle
-                )
-                defaults = {
-                    "hostname": hostname,
-                    "system_name": system_name,
-                    "server_type": product_bundle["name_to_group"].get(canon_name, "")
-                    if canon_name
-                    else "",
-                    "url_or_db_name": canon_name if name_ok else "",
-                    "remark1": str(get_row_value(row, ["remark1", "비고1"], "")).strip(),
-                    "remark2": str(get_row_value(row, ["remark2", "비고2"], "")).strip(),
-                }
-                if url_or_db_name_raw and not name_ok:
-                    skipped_count += 1
-                    import_row_errors[f"import_{excel_row_no}"] = (
-                        f"{excel_row_no}행: 컴포넌트명은 등록된 코드명(또는 이전 코드값)만 가능: {url_or_db_name_raw}"
-                    )
-                    continue
-                allowed_hosts = hosts_by_service.get(system_name, [])
-                if system_name and hostname and hostname not in allowed_hosts:
-                    skipped_count += 1
-                    import_row_errors[f"import_{excel_row_no}"] = (
-                        f"{excel_row_no}행: 해당 서비스명에 연결된 Hostname이 아닙니다: {hostname}"
-                    )
-                    continue
-                if mgmt_no:
-                    existing = ComponentMaster.objects.filter(component_mgmt_no=mgmt_no).first()
-                    if existing:
-                        for key, val in defaults.items():
-                            setattr(existing, key, val)
-                        existing.save()
-                        updated_count += 1
-                    elif defaults["hostname"]:
-                        ComponentMaster.objects.create(component_mgmt_no=mgmt_no, **defaults)
-                        created_count += 1
-                    else:
-                        skipped_count += 1
-                elif defaults["hostname"]:
-                    ComponentMaster.objects.create(**defaults)
-                    created_count += 1
-                else:
-                    skipped_count += 1
-            messages.success(
-                request,
-                f"엑셀 import 완료: 업데이트 {updated_count}건 / 인서트 {created_count}건 / 스킵 {skipped_count}건",
-            )
-            if import_row_errors:
-                request.session["row_errors_component_item"] = import_row_errors
-            return redirect(build_list_redirect(request.path, query=query, page=page))
-
-        if action == "save":
-            rows = json.loads(request.POST.get("rows_json", "[]"))
-            deleted_ids = json.loads(request.POST.get("deleted_ids_json", "[]"))
-            failed_ids = []
-            row_errors = {}
-            invalid_system_names = set()
-            invalid_product_codes = set()
-            invalid_hostnames = set()
-            if deleted_ids:
-                try:
-                    ComponentMaster.objects.filter(pk__in=deleted_ids).delete()
-                except Exception as exc:
-                    for xid in [x for x in deleted_ids if str(x).isdigit()]:
-                        failed_ids.append(xid)
-                        row_errors[str(xid)] = f"삭제 실패: {build_error_message(exc)}"
-
-            for row in rows:
-                pk = str(row.get("id", "")).strip()
-                component_mgmt_no = str(row.get("component_mgmt_no", "")).strip()
-                hostname = str(row.get("hostname", "")).strip()
-                system_name = str(row.get("system_name", "")).strip()
-                if not pk and not hostname:
-                    continue
-                if system_name and not ServiceMaster.objects.filter(name=system_name).exists():
-                    if pk:
-                        failed_ids.append(pk)
-                        row_errors[str(pk)] = "서비스 마스터에 등록된 서비스명만 입력 가능합니다."
-                    else:
-                        invalid_system_names.add(system_name)
-                    continue
-                raw_name = (row.get("url_or_db_name") or "").strip()
-                canon_name, name_ok = resolve_component_master_product_input(raw_name, product_bundle)
-                payload = {
-                    "hostname": hostname,
-                    "system_name": system_name,
-                    "server_type": "",
-                    "url_or_db_name": canon_name if name_ok else "",
-                    "remark1": (row.get("remark1") or "").strip(),
-                    "remark2": (row.get("remark2") or "").strip(),
-                }
-                if raw_name and not name_ok:
-                    if pk:
-                        failed_ids.append(pk)
-                        row_errors[str(pk)] = (
-                            "컴포넌트명은 Language·Runtime 등에 등록된 코드명만 입력 가능합니다."
-                        )
-                    else:
-                        invalid_product_codes.add(raw_name)
-                    continue
-                payload["server_type"] = product_bundle["name_to_group"].get(payload["url_or_db_name"], "")
-                allowed_hosts = hosts_by_service.get(system_name, [])
-                if system_name and hostname and hostname not in allowed_hosts:
-                    if pk:
-                        failed_ids.append(pk)
-                        row_errors[str(pk)] = (
-                            "선택한 서비스명에 연결된 자산 Hostname만 입력할 수 있습니다."
-                        )
-                    else:
-                        invalid_hostnames.add(hostname)
-                    continue
-                if pk:
-                    try:
-                        comp = ComponentMaster.objects.get(pk=pk)
-                        for key, val in payload.items():
-                            setattr(comp, key, val)
-                        comp.save()
-                    except Exception as exc:
-                        failed_ids.append(pk)
-                        row_errors[str(pk)] = build_error_message(exc)
-                elif payload["hostname"]:
-                    try:
-                        ComponentMaster.objects.create(component_mgmt_no=component_mgmt_no or None, **payload)
-                    except Exception as exc:
-                        if component_mgmt_no:
-                            dup = (
-                                ComponentMaster.objects.filter(component_mgmt_no=component_mgmt_no)
-                                .values_list("pk", flat=True)
-                                .first()
-                            )
-                            if dup:
-                                failed_ids.append(dup)
-                                row_errors[str(dup)] = build_error_message(exc)
-            if invalid_system_names:
-                messages.error(
-                    request,
-                    "서비스 마스터 미등록 서비스명으로 저장할 수 없습니다: " + ", ".join(sorted(invalid_system_names)),
-                )
-                row_errors["__global__"] = "서비스 마스터 미등록 서비스명 입력"
-            if invalid_product_codes:
-                messages.error(
-                    request,
-                    "등록되지 않은 컴포넌트명(코드명)이 포함되어 저장할 수 없습니다: "
-                    + ", ".join(sorted(invalid_product_codes)),
-                )
-                row_errors["__global_product__"] = "유효하지 않은 컴포넌트명"
-            if invalid_hostnames:
-                messages.error(
-                    request,
-                    "서비스명에 연결된 Hostname이 아닌 값이 포함되어 저장할 수 없습니다: "
-                    + ", ".join(sorted(invalid_hostnames)),
-                )
-                row_errors["__global_hostname__"] = "서비스와 연결되지 않은 Hostname"
-            request.session["row_errors_component_item"] = row_errors
-            return redirect(build_list_redirect(request.path, query=query, page=page, failed_ids=failed_ids))
-
-    paginator = Paginator(qs, 100)
-    page_obj = paginator.get_page(request.GET.get("page"))
-    for item in page_obj.object_list:
-        canon, ok = resolve_component_master_product_input(item.url_or_db_name or "", product_bundle)
-        if ok:
-            setattr(item, "component_display_name", canon or "")
-        else:
-            setattr(item, "component_display_name", item.url_or_db_name or "")
-    return render(
-        request,
-        "web/component_item_master_list.html",
-        {
-            "items": page_obj.object_list,
-            "page_obj": page_obj,
-            "q": query,
-            "failed_ids": failed_ids,
-            "row_errors": row_errors,
-            "popup_error_summary": summarize_row_errors(row_errors),
-            "service_names": list(ServiceMaster.objects.values_list("name", flat=True).order_by("name")),
-            "hosts_by_service": hosts_by_service,
-            "component_product_codes": component_product_codes,
-            "component_display_name_to_group_name": product_bundle["name_to_group"],
+            "component_type_codes": code_values("component_type"),
+            "support_status_codes": code_values("support_status"),
         },
     )
 
@@ -1863,20 +807,10 @@ def ai_asset_search(request):
     query = request.GET.get("q", "").strip()
     results = []
     error = ""
-
     if query:
         try:
             svc = AssetSearchService()
             results = svc.search(query, k=10)
         except FileNotFoundError:
             error = "AI 인덱스가 없습니다. `python manage.py build_asset_index`를 먼저 실행하세요."
-
-    return render(
-        request,
-        "web/ai_asset_search.html",
-        {
-            "q": query,
-            "results": results,
-            "error": error,
-        },
-    )
+    return render(request, "web/ai_asset_search.html", {"q": query, "results": results, "error": error})

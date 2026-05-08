@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING
 from django.db import transaction
 
 if TYPE_CHECKING:
-    from masters.models import Component, ServiceMaster
+    from masters.models import ConfigurationMaster, ServiceMaster
 
 
 def last_three_digits_from_code(code: str) -> str:
@@ -22,47 +22,26 @@ def compute_system_mgmt_no(service_mgmt_no: str, asset_mgmt_no: str) -> str:
 
 
 def map_service_owners_to_asset_fields(service_obj: "ServiceMaster | None"):
-    if not service_obj:
-        return {
-            "customer_owner_name": "",
-            "appl_owner_name": "",
-            "partner_operator_name": "",
-            "server_owner_name": "",
-            "db_owner_name": "",
-        }
     return {
-        "customer_owner_name": service_obj.customer_owner or "",
-        "appl_owner_name": service_obj.partner_operator or "",
-        "partner_operator_name": service_obj.appl_owner or "",
-        "server_owner_name": service_obj.server_owner or "",
-        "db_owner_name": service_obj.db_owner or "",
+        "customer_owner_name": "",
+        "appl_owner_name": "",
+        "partner_operator_name": "",
+        "server_owner_name": "",
+        "db_owner_name": "",
     }
 
 
 def build_person_names_for_role(service_name: str, role: str) -> str:
-    """담당 시스템=서비스명이고 역할이 일치하는 담당자 성명, person_mgmt_no 순."""
-    from masters.models import PersonMaster
-
-    target = str(service_name or "").strip()
-    role_norm = str(role or "").strip()
-    if not target or not role_norm:
-        return ""
-    names = list(
-        PersonMaster.objects.filter(system_name=target, role=role_norm)
-        .order_by("person_mgmt_no", "name")
-        .values_list("name", flat=True)
-    )
-    unique_names = list(dict.fromkeys([n.strip() for n in names if str(n).strip()]))
-    return "; ".join(unique_names)
+    return ""
 
 
 def build_appl_owner_names(service_name: str) -> str:
-    """담당 시스템=서비스명이고 역할이 Appl. 운영자인 담당자 성명, person_mgmt_no 순."""
-    return build_person_names_for_role(service_name, "Appl. 운영자")
+    """담당 시스템=서비스명이고 역할 표시명이 운영자(코드 OPERATOR)인 담당자 성명, person_mgmt_no 순."""
+    return build_person_names_for_role(service_name, "운영자")
 
 
 def resolve_infra_owner_fields(service_obj: "ServiceMaster | None"):
-    """서비스 마스터 필드 + 담당자 마스터(동일 서비스명) 기반 Appl. 운영자 보강."""
+    """서비스 마스터 필드 + 담당자 마스터(동일 서비스명) 기반 partner_operator(운영자) 보강."""
     fields = map_service_owners_to_asset_fields(service_obj)
     if not service_obj:
         return fields
@@ -72,56 +51,50 @@ def resolve_infra_owner_fields(service_obj: "ServiceMaster | None"):
     return fields
 
 
-def copy_component_fields(comp: "Component"):
-    """자산 마스터에서 system_name(조인 키)을 제외한 필드."""
+def copy_component_fields(comp: "ConfigurationMaster"):
+    """구성정보 마스터 기반으로 InfraAsset 공통 필드를 채운다."""
     return {
         "hostname": comp.hostname or "",
-        "server_type": comp.server_type or "",
-        "operation_dev": comp.operation_dev or "",
-        "network_zone": comp.network_zone or "",
-        "platform_type": comp.platform_type or "",
+        "server_type": comp.server_type_code.code if comp.server_type_code else "",
+        "operation_dev": comp.operation_dev_code.code if comp.operation_dev_code else "",
+        "network_zone": comp.network_zone_code.code if comp.network_zone_code else "",
+        "platform_type": comp.infra_type_code.code if comp.infra_type_code else "",
         "ip": comp.ip,
         "port": comp.port or "",
-        "location": comp.location or "",
-        "mw": comp.mw or "",
-        "runtime": comp.runtime or "",
-        "os_dbms": comp.os_dbms or "",
-        "url_or_db_name": comp.url_or_db_name or "",
-        "ssl_domain": comp.ssl_domain or "",
-        "cert_format": comp.cert_format or "",
-        "remark1": comp.remark1 or "",
-        "remark2": comp.remark2 or "",
-        "extra": comp.extra if isinstance(comp.extra, dict) else {},
+        "location": comp.location_code.code if comp.location_code else "",
+        "mw": "",
+        "runtime": "",
+        "os_dbms": "",
+        "url_or_db_name": comp.url or "",
+        "ssl_domain": "",
+        "cert_format": "",
+        "remark1": "",
+        "remark2": "",
+        "extra": {},
     }
 
 
 def rebuild_infra_assets_from_masters():
     """서비스·자산 마스터 조인 결과로 InfraAsset 전량 재구성 (담당자 반영은 resolve_infra_owner_fields)."""
-    from masters.models import Component, ServiceMaster
+    from masters.models import ConfigurationMaster, ServiceMaster
 
     from assets.models import InfraAsset
 
-    svc_by_name = {}
-    for s in ServiceMaster.objects.all():
-        key = (s.name or "").strip()
-        if key:
-            svc_by_name[key] = s
-
     to_create = []
-    for comp in Component.objects.exclude(system_name="").order_by("system_name", "asset_mgmt_no"):
-        key = (comp.system_name or "").strip()
-        svc = svc_by_name.get(key)
-        if not svc:
-            continue
-        smn = compute_system_mgmt_no(svc.service_mgmt_no, comp.asset_mgmt_no)
-        owners = resolve_infra_owner_fields(svc)
+    for comp in ConfigurationMaster.objects.all().order_by("asset_mgmt_no"):
+        link = comp.service_configuration_mappings.select_related("service").first()
+        svc = link.service if link else None
+        service_mgmt_no = svc.service_mgmt_no if svc else "UNMAPPED"
+        service_name = svc.name if svc else "미매핑"
+        smn = compute_system_mgmt_no(service_mgmt_no, comp.asset_mgmt_no)
+        owners = resolve_infra_owner_fields(svc if svc else None)
         comp_fields = copy_component_fields(comp)
         to_create.append(
             InfraAsset(
                 system_mgmt_no=smn,
-                service_mgmt_no=svc.service_mgmt_no,
+                service_mgmt_no=service_mgmt_no,
                 asset_mgmt_no=comp.asset_mgmt_no,
-                service_name=svc.name,
+                service_name=service_name,
                 customer_owner_name=owners["customer_owner_name"],
                 appl_owner_name=owners["appl_owner_name"],
                 partner_operator_name=owners["partner_operator_name"],

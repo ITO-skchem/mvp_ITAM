@@ -1,195 +1,253 @@
 from django.db import models
 from django.db import transaction
 
+from core.models import Code, CodeGroup
 
-class ServiceMaster(models.Model):
-    service_mgmt_no = models.CharField("서비스관리번호", max_length=20, unique=True, blank=True, editable=False)
-    category = models.CharField("구분", max_length=100, blank=True)
-    name = models.CharField("서비스명", max_length=200)
-    system_type = models.CharField("시스템 구분", max_length=100, blank=True)
-    description = models.TextField("설명", blank=True)
-    operation_type = models.CharField("운영구분", max_length=50, blank=True)
-    service_grade = models.CharField("서비스 등급", max_length=50, blank=True)
-    service_level = models.CharField("서비스 수준", max_length=50, blank=True)
-    customer_owner = models.CharField("고객사 담당자", max_length=100, blank=True)
-    appl_owner = models.CharField("Appl. 담당자", max_length=100, blank=True)
-    partner_operator = models.CharField("Appl. 운영자", max_length=100, blank=True)
-    server_owner = models.CharField("서버 담당자", max_length=100, blank=True)
-    db_owner = models.CharField("DB 담당자", max_length=100, blank=True)
-    owner_company = models.CharField("담당 회사", max_length=100, blank=True)
-    owner_dept = models.CharField("담당 부서", max_length=100, blank=True)
-    owner_manager = models.CharField("담당 팀장", max_length=100, blank=True)
-    owner_person = models.CharField("담당자", max_length=100, blank=True)
+
+def _next_prefixed_value(model_cls, field_name, prefix, width=4):
+    with transaction.atomic():
+        last = (
+            model_cls.objects.filter(**{f"{field_name}__startswith": prefix})
+            .order_by(f"-{field_name}")
+            .values_list(field_name, flat=True)
+            .first()
+        )
+        next_no = int(last[len(prefix) :]) + 1 if last else 1
+        return f"{prefix}{next_no:0{width}d}"
+
+
+class AuditStampMixin(models.Model):
+    created_at = models.DateTimeField("생성일", auto_now_add=True, null=True, blank=True)
+    updated_at = models.DateTimeField("수정일", auto_now=True, null=True, blank=True)
+    created_by = models.CharField("생성자", max_length=100, blank=True)
+    updated_by = models.CharField("수정자", max_length=100, blank=True)
+
+    class Meta:
+        abstract = True
+
+
+class ServiceMaster(AuditStampMixin):
+    service_mgmt_no = models.CharField("서비스 ID", max_length=20, unique=True, blank=True, editable=False)
+    name = models.CharField("서비스 명", max_length=200)
+    category_code = models.ForeignKey(
+        Code,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="service_category_items",
+        verbose_name="서비스 분류",
+    )
+    status_code = models.ForeignKey(
+        Code,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="service_status_items",
+        verbose_name="서비스 상태",
+    )
+    build_type_code = models.ForeignKey(
+        Code,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="service_build_type_items",
+        verbose_name="구축 구분",
+    )
+    itgc_code = models.ForeignKey(
+        Code,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="service_itgc_items",
+        verbose_name="ITGC 여부",
+    )
+    service_grade_code = models.ForeignKey(
+        Code,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="service_grade_items",
+        verbose_name="서비스 등급",
+    )
     opened_at = models.DateField("서비스 오픈일", null=True, blank=True)
-    build_type = models.CharField("구축 구분", max_length=100, blank=True)
-    scm_tool = models.CharField("형상관리", max_length=100, blank=True)
-    deploy_tool = models.CharField("배포도구", max_length=100, blank=True)
-    monitoring_tool = models.CharField("모니터링도구", max_length=100, blank=True)
-    frontend_stack = models.CharField("Front-End", max_length=200, blank=True)
-    backend_stack = models.CharField("Back-End", max_length=200, blank=True)
-    infra_env = models.CharField("운영환경", max_length=100, blank=True)
-    automation_tool = models.CharField("자동화도구", max_length=100, blank=True)
-    monitoring = models.CharField("모니터링", max_length=100, blank=True)
-    itgc = models.BooleanField("ITGC 여부", default=False)
-    gc = models.BooleanField("GC", default=False)
-    pharma = models.BooleanField("파마", default=False)
-    plasma = models.BooleanField("플라즈마", default=False)
-    mu = models.BooleanField("MU", default=False)
-    entis = models.BooleanField("엔티스", default=False)
-    daejung = models.BooleanField("대정", default=False)
-    dy = models.BooleanField("DY", default=False)
-    bs = models.BooleanField("BS", default=False)
-    bs_share_ratio = models.DecimalField("BS Share 비율", max_digits=6, decimal_places=2, null=True, blank=True)
-    bs_share_note = models.TextField("BS Share 비고", blank=True)
-    notes = models.TextField("비고", blank=True)
-    extra = models.JSONField("추가필드", default=dict, blank=True)
+    ended_at = models.DateField("서비스 종료일", null=True, blank=True)
+    description = models.TextField("설명", blank=True)
 
-    @classmethod
-    def next_service_mgmt_no(cls):
-        prefix = "SVC"
-        with transaction.atomic():
-            last = (
-                cls.objects.filter(service_mgmt_no__startswith=prefix)
-                .order_by("-service_mgmt_no")
-                .values_list("service_mgmt_no", flat=True)
-                .first()
-            )
-            next_no = int(last[3:]) + 1 if last else 1
-            return f"{prefix}{next_no:04d}"
+    class Meta:
+        ordering = ["service_mgmt_no", "name"]
 
     def save(self, *args, **kwargs):
         if not self.service_mgmt_no:
-            self.service_mgmt_no = self.next_service_mgmt_no()
+            self.service_mgmt_no = _next_prefixed_value(ServiceMaster, "service_mgmt_no", "SVC")
         super().save(*args, **kwargs)
 
     def __str__(self):
         return self.name
 
 
+class AttributeCode(models.Model):
+    attribute_code = models.CharField("속성 코드", max_length=50, primary_key=True)
+    name = models.CharField("속성명", max_length=200)
+    data_type_code = models.ForeignKey(
+        Code, null=True, blank=True, on_delete=models.SET_NULL, related_name="attribute_data_type_codes", verbose_name="데이터 타입"
+    )
+    required_code = models.ForeignKey(
+        Code, null=True, blank=True, on_delete=models.SET_NULL, related_name="attribute_required_codes", verbose_name="필수 여부"
+    )
+    searchable_code = models.ForeignKey(
+        Code, null=True, blank=True, on_delete=models.SET_NULL, related_name="attribute_searchable_codes", verbose_name="검색 가능 여부"
+    )
+    code_group = models.ForeignKey(
+        CodeGroup, null=True, blank=True, on_delete=models.SET_NULL, related_name="attribute_codes", verbose_name="코드 그룹"
+    )
+    target_code = models.ForeignKey(
+        Code, null=True, blank=True, on_delete=models.SET_NULL, related_name="attribute_target_codes", verbose_name="적용 대상"
+    )
+
+    class Meta:
+        ordering = ["attribute_code"]
+
+    def __str__(self):
+        return f"{self.attribute_code} - {self.name}"
+
+
 class PersonMaster(models.Model):
-    person_mgmt_no = models.CharField("담당자관리번호", max_length=20, unique=True, blank=True, editable=False)
-    system_name = models.CharField("담당 시스템", max_length=200, blank=True)
+    person_mgmt_no = models.CharField("담당자 ID", max_length=20, unique=True, blank=True, editable=False)
+    employee_no = models.CharField("사번", max_length=50, unique=True)
     name = models.CharField("성명", max_length=100)
-    role = models.CharField("역할", max_length=20, blank=True)
-    company = models.CharField("소속 조직", max_length=100, blank=True)
-    employee_no = models.CharField("사번", max_length=50, blank=True, unique=True)
-    phone = models.CharField("연락처", max_length=50, blank=True)
-    email = models.EmailField("내부 메일", blank=True)
-    ext_email = models.EmailField("외부 메일", blank=True)
-    resident = models.BooleanField("상주 여부", default=False)
+    role_code = models.ForeignKey(Code, null=True, blank=True, on_delete=models.SET_NULL, related_name="person_roles", verbose_name="역할")
+    company = models.CharField("회사명", max_length=100, blank=True)
+    phone = models.CharField("전화번호", max_length=50, blank=True)
+    email = models.EmailField("내부 이메일", blank=True)
+    external_email = models.EmailField("외부 이메일", blank=True)
+    status_code = models.ForeignKey(Code, null=True, blank=True, on_delete=models.SET_NULL, related_name="person_statuses", verbose_name="상태")
     deployed_at = models.DateField("투입 일자", null=True, blank=True)
-    notes = models.TextField("비고", blank=True)
-    extra = models.JSONField("추가필드", default=dict, blank=True)
+    ended_at = models.DateField("종료 일자", null=True, blank=True)
 
-    @classmethod
-    def next_person_mgmt_no(cls):
-        prefix = "PRS"
-        with transaction.atomic():
-            last = (
-                cls.objects.filter(person_mgmt_no__startswith=prefix)
-                .order_by("-person_mgmt_no")
-                .values_list("person_mgmt_no", flat=True)
-                .first()
-            )
-            next_no = int(last[3:]) + 1 if last else 1
-            return f"{prefix}{next_no:04d}"
-
-    @classmethod
-    def next_employee_no(cls):
-        """사번: I + 5자리 숫자(00001~), DB 내 기존 I패턴 최대값 다음."""
-        prefix = "I"
-        with transaction.atomic():
-            max_n = 0
-            for raw in cls.objects.exclude(employee_no="").values_list("employee_no", flat=True):
-                s = str(raw).strip()
-                if len(s) == 6 and s.startswith(prefix) and s[1:].isdigit():
-                    max_n = max(max_n, int(s[1:], 10))
-            return f"{prefix}{max_n + 1:05d}"
+    class Meta:
+        ordering = ["person_mgmt_no", "name"]
 
     def save(self, *args, **kwargs):
         if not self.person_mgmt_no:
-            self.person_mgmt_no = self.next_person_mgmt_no()
-        if not (self.employee_no or "").strip():
-            self.employee_no = self.next_employee_no()
+            self.person_mgmt_no = _next_prefixed_value(PersonMaster, "person_mgmt_no", "PRS")
         super().save(*args, **kwargs)
 
     def __str__(self):
-        return f"{self.name}({self.company})"
+        return f"{self.name}({self.employee_no})"
 
 
-class Component(models.Model):
-    asset_mgmt_no = models.CharField("자산관리번호", max_length=20, unique=True, blank=True, editable=False)
-    hostname = models.CharField("Hostname", max_length=200, blank=True)
-    system_name = models.CharField("시스템명", max_length=200, blank=True)
-    server_type = models.CharField("서버 구분", max_length=100, blank=True)
-    operation_dev = models.CharField("운영/개발", max_length=50, blank=True)
-    platform_type = models.CharField("플랫폼 구분", max_length=100, blank=True)
-    location = models.CharField("위치", max_length=100, blank=True)
-    network_zone = models.CharField("네트웍 구분", max_length=100, blank=True)
+class ConfigurationMaster(AuditStampMixin):
+    asset_mgmt_no = models.CharField("구성 ID", max_length=20, unique=True, blank=True, editable=False)
+    hostname = models.CharField("구성명", max_length=200)
+    server_type_code = models.ForeignKey(Code, null=True, blank=True, on_delete=models.SET_NULL, related_name="config_types", verbose_name="구성 유형")
+    operation_dev_code = models.ForeignKey(Code, null=True, blank=True, on_delete=models.SET_NULL, related_name="config_operation_types", verbose_name="운영/개발")
+    infra_type_code = models.ForeignKey(Code, null=True, blank=True, on_delete=models.SET_NULL, related_name="config_infra_types", verbose_name="인프라 구분")
+    location_code = models.ForeignKey(Code, null=True, blank=True, on_delete=models.SET_NULL, related_name="config_locations", verbose_name="인프라 위치")
+    network_zone_code = models.ForeignKey(Code, null=True, blank=True, on_delete=models.SET_NULL, related_name="config_network_zones", verbose_name="네트웍 구분")
     ip = models.GenericIPAddressField("IP", null=True, blank=True)
     port = models.CharField("Port", max_length=20, blank=True)
-    mw = models.CharField("MW", max_length=100, blank=True)
-    runtime = models.CharField("Runtime", max_length=100, blank=True)
-    os_dbms = models.CharField("OS/DBMS", max_length=200, blank=True)
-    os = models.CharField("OS", max_length=100, blank=True)
-    db = models.CharField("DB", max_length=100, blank=True)
-    middleware = models.CharField("Middleware", max_length=100, blank=True)
-    url_or_db_name = models.CharField("URL/DB명", max_length=300, blank=True)
-    ssl_domain = models.CharField("SSL 도메인", max_length=200, blank=True)
-    cert_format = models.CharField("인증서 포맷", max_length=100, blank=True)
-    remark1 = models.TextField("비고1", blank=True)
-    remark2 = models.TextField("비고2", blank=True)
-    extra = models.JSONField("추가필드", default=dict, blank=True)
+    url = models.CharField("URL", max_length=300, blank=True)
 
-    @classmethod
-    def next_asset_mgmt_no(cls):
-        prefix = "AST"
-        with transaction.atomic():
-            last = (
-                cls.objects.filter(asset_mgmt_no__startswith=prefix)
-                .order_by("-asset_mgmt_no")
-                .values_list("asset_mgmt_no", flat=True)
-                .first()
-            )
-            next_no = int(last[3:]) + 1 if last else 1
-            return f"{prefix}{next_no:04d}"
+    class Meta:
+        ordering = ["asset_mgmt_no", "hostname"]
 
     def save(self, *args, **kwargs):
         if not self.asset_mgmt_no:
-            self.asset_mgmt_no = self.next_asset_mgmt_no()
+            self.asset_mgmt_no = _next_prefixed_value(ConfigurationMaster, "asset_mgmt_no", "CFG")
         super().save(*args, **kwargs)
 
     def __str__(self):
         return self.hostname or self.asset_mgmt_no
 
 
-class ComponentMaster(models.Model):
-    component_mgmt_no = models.CharField("컴포넌트번호", max_length=20, unique=True, blank=True, editable=False)
-    hostname = models.CharField("Hostname", max_length=200, blank=True)
-    system_name = models.CharField("시스템명", max_length=200, blank=True)
-    server_type = models.CharField("서버 구분", max_length=100, blank=True)
-    url_or_db_name = models.CharField("URL/DB명", max_length=300, blank=True)
-    remark1 = models.TextField("비고1", blank=True)
-    remark2 = models.TextField("비고2", blank=True)
-    extra = models.JSONField("추가필드", default=dict, blank=True)
+class Component(AuditStampMixin):
+    component_mgmt_no = models.CharField("컴포넌트 ID", max_length=20, unique=True, blank=True, editable=False)
+    component_type_code = models.ForeignKey(Code, null=True, blank=True, on_delete=models.SET_NULL, related_name="component_types", verbose_name="컴포넌트 유형")
+    product_name = models.CharField("컴포넌트명", max_length=200, default="", blank=True)
+    version = models.CharField("버전", max_length=100, blank=True)
+    vendor_name = models.CharField("벤더명", max_length=200, blank=True)
+    cpe_name = models.CharField("CPE 이름", max_length=300, blank=True)
+    eos_date = models.DateField("EOS 날짜", null=True, blank=True)
+    eol_date = models.DateField("EOL 날짜", null=True, blank=True)
+    support_status_code = models.ForeignKey(Code, null=True, blank=True, on_delete=models.SET_NULL, related_name="component_support_statuses", verbose_name="지원 여부")
 
-    @classmethod
-    def next_component_mgmt_no(cls):
-        prefix = "cmp"
-        with transaction.atomic():
-            last = (
-                cls.objects.filter(component_mgmt_no__startswith=prefix)
-                .order_by("-component_mgmt_no")
-                .values_list("component_mgmt_no", flat=True)
-                .first()
-            )
-            next_no = int(last[3:]) + 1 if last else 1
-            return f"{prefix}{next_no:04d}"
+    class Meta:
+        ordering = ["component_mgmt_no", "product_name"]
 
     def save(self, *args, **kwargs):
         if not self.component_mgmt_no:
-            self.component_mgmt_no = self.next_component_mgmt_no()
+            self.component_mgmt_no = _next_prefixed_value(Component, "component_mgmt_no", "CMP")
         super().save(*args, **kwargs)
 
     def __str__(self):
-        return self.hostname or self.component_mgmt_no
+        return " ".join(p for p in (self.product_name, self.version) if (p or "").strip()).strip()
+
+
+class ServiceAttribute(models.Model):
+    id = models.BigAutoField(primary_key=True, verbose_name="서비스 속성 ID")
+    service = models.ForeignKey(ServiceMaster, on_delete=models.CASCADE, related_name="service_attributes", verbose_name="서비스 ID")
+    attribute_code = models.ForeignKey(AttributeCode, on_delete=models.CASCADE, related_name="service_attributes", verbose_name="속성 코드")
+    value = models.TextField("속성 값", blank=True)
+
+    class Meta:
+        unique_together = ("service", "attribute_code")
+
+
+class ConfigurationAttribute(models.Model):
+    id = models.BigAutoField(primary_key=True, verbose_name="구성정보 속성 ID")
+    configuration = models.ForeignKey(ConfigurationMaster, on_delete=models.CASCADE, related_name="configuration_attributes", verbose_name="구성 ID")
+    attribute_code = models.ForeignKey(AttributeCode, on_delete=models.CASCADE, related_name="configuration_attributes", verbose_name="속성 코드")
+    value = models.TextField("속성 값", blank=True)
+
+    class Meta:
+        unique_together = ("configuration", "attribute_code")
+
+
+class ServicePersonMapping(models.Model):
+    id = models.BigAutoField(primary_key=True, verbose_name="서비스 담당자 매핑 ID")
+    service = models.ForeignKey(ServiceMaster, on_delete=models.CASCADE, related_name="service_person_mappings", verbose_name="서비스 ID")
+    person = models.ForeignKey(PersonMaster, on_delete=models.CASCADE, related_name="service_person_mappings", verbose_name="담당자 ID")
+    role_code = models.ForeignKey(Code, null=True, blank=True, on_delete=models.SET_NULL, related_name="service_person_mapping_roles", verbose_name="역할")
+    status_code = models.ForeignKey(Code, null=True, blank=True, on_delete=models.SET_NULL, related_name="service_person_mapping_statuses", verbose_name="상태")
+    started_at = models.DateField("시작일", null=True, blank=True)
+    ended_at = models.DateField("종료일", null=True, blank=True)
+
+
+class ServiceConfigurationMapping(models.Model):
+    id = models.BigAutoField(primary_key=True, verbose_name="서비스 구성 매핑 ID")
+    service = models.ForeignKey(ServiceMaster, on_delete=models.CASCADE, related_name="service_configuration_mappings", verbose_name="서비스 ID")
+    configuration = models.ForeignKey(ConfigurationMaster, on_delete=models.CASCADE, related_name="service_configuration_mappings", verbose_name="구성 ID")
+    status_code = models.ForeignKey(Code, null=True, blank=True, on_delete=models.SET_NULL, related_name="service_configuration_mapping_statuses", verbose_name="상태")
+    started_at = models.DateField("시작일", null=True, blank=True)
+    ended_at = models.DateField("종료일", null=True, blank=True)
+
+
+class ConfigurationComponentMapping(models.Model):
+    id = models.BigAutoField(primary_key=True, verbose_name="구성 컴포넌트 ID")
+    configuration = models.ForeignKey(ConfigurationMaster, on_delete=models.CASCADE, related_name="configuration_component_mappings", verbose_name="구성 ID")
+    component = models.ForeignKey(Component, on_delete=models.CASCADE, related_name="configuration_component_mappings", verbose_name="컴포넌트 ID")
+    install_path = models.CharField("설치 경로", max_length=300, blank=True)
+    use_yn_code = models.ForeignKey(Code, null=True, blank=True, on_delete=models.SET_NULL, related_name="configuration_component_use_flags", verbose_name="사용 여부")
+    started_at = models.DateField("시작일", null=True, blank=True)
+    ended_at = models.DateField("종료일", null=True, blank=True)
+
+
+class Certificate(models.Model):
+    id = models.BigAutoField(primary_key=True, verbose_name="인증서 ID")
+    configuration = models.ForeignKey(ConfigurationMaster, on_delete=models.CASCADE, related_name="certificates", verbose_name="구성 ID")
+    domain = models.CharField("도메인", max_length=200)
+    cert_format = models.CharField("인증서 포맷", max_length=100, blank=True)
+    expires_at = models.DateField("만료일", null=True, blank=True)
+    issuer = models.CharField("발급기관", max_length=200, blank=True)
+    use_yn_code = models.ForeignKey(Code, null=True, blank=True, on_delete=models.SET_NULL, related_name="certificate_use_flags", verbose_name="사용 여부")
+
+
+class ChangeHistory(models.Model):
+    id = models.BigAutoField(primary_key=True, verbose_name="이력 ID")
+    table_name = models.CharField("테이블 명", max_length=100)
+    pk_value = models.CharField("PK 값", max_length=100)
+    field_name = models.CharField("변경 필드", max_length=100)
+    before_value = models.TextField("변경 전 값", blank=True)
+    after_value = models.TextField("변경 후 값", blank=True)
+    changed_by = models.CharField("변경자", max_length=100, blank=True)
+    changed_at = models.DateTimeField("변경일", auto_now_add=True)

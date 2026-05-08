@@ -23,12 +23,9 @@ class Command(BaseCommand):
                 ServiceMaster.objects.update_or_create(
                     name=name,
                     defaults={
-                        "category": str(row.get("구분", "")),
-                        "system_type": str(row.get("시스템 구분", "")),
                         "description": str(row.get("설명", "")),
-                        "operation_type": str(row.get("운영구분", "")),
-                        "service_grade": str(row.get("서비스 등급", "")),
-                        "service_level": str(row.get("서비스 수준", "")),
+                        "created_by": "import_excel",
+                        "updated_by": "import_excel",
                     },
                 )
 
@@ -39,16 +36,18 @@ class Command(BaseCommand):
                 name = str(name).strip()
                 if not name:
                     continue
+                employee_no = str(row.get("사번", "")).strip() or None
+                if not employee_no:
+                    continue
                 PersonMaster.objects.update_or_create(
-                    name=name,
+                    employee_no=employee_no,
                     defaults={
-                        "system_name": str(row.get("시스템명", "")),
+                        "name": name,
                         "company": str(row.get("업체명", "")),
                         "phone": str(row.get("연락처", "")),
                         "email": str(row.get("메일주소", "")) or "",
-                        "ext_email": str(row.get("외부메일주소", "")) or "",
-                        "resident": str(row.get("상주여부", "")).upper() in ["Y", "YES", "1", "TRUE"],
-                        "notes": str(row.get("비고(특이사항)", "")),
+                        "external_email": str(row.get("외부메일주소", "")) or "",
+                        "deployed_at": pd.to_datetime(row.get("투입일자", None), errors="coerce"),
                     },
                 )
 
@@ -58,18 +57,15 @@ class Command(BaseCommand):
                 name = str(row.get("컴포넌트/컨트롤 명", "")).strip()
                 if not name:
                     continue
+                version = str(row.get("버전", "")).strip()
                 Component.objects.update_or_create(
-                    name=name,
-                    version=str(row.get("버전", "")).strip(),
+                    product_name=name,
+                    version=version,
                     defaults={
-                        "system_name": str(row.get("시스템명", "")),
-                        "comp_type": str(row.get("컴포넌트 유형", "")),
-                        "usage": str(row.get("사용 용도", "")),
-                        "eos": str(row.get("EOS여부", "")).upper() in ["Y", "YES", "1", "TRUE"],
-                        "update_support": str(row.get("업데이트 지원 여부", "")).upper()
-                        not in ["N", "NO", "0", "FALSE"],
-                        "license": str(row.get("라이선스", "")),
-                        "install_method": str(row.get("설치방법", "")),
+                        "vendor_name": str(row.get("벤더명", "")),
+                        "cpe_name": str(row.get("CPE", "")),
+                        "created_by": "import_excel",
+                        "updated_by": "import_excel",
                     },
                 )
 

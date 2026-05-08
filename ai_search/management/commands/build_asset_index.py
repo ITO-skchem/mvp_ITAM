@@ -6,7 +6,7 @@ from django.core.management.base import BaseCommand
 
 from ai_search.indexer import AssetIndexer
 from assets.models import InfraAsset
-from masters.models import Component, PersonMaster, ServiceMaster
+from masters.models import Component, ConfigurationMaster, PersonMaster, ServiceMaster
 
 
 class Command(BaseCommand):
@@ -29,22 +29,34 @@ class Command(BaseCommand):
 
         for service in ServiceMaster.objects.all():
             text = (
-                f"[서비스] {service.name} 구분:{service.system_type} 운영:{service.operation_type} "
-                f"등급:{service.service_grade} 수준:{service.service_level} "
-                f"ITGC:{service.itgc} 설명:{service.description}"
+                f"[서비스] {service.name} "
+                f"분류:{service.category_code.code if service.category_code else ''} "
+                f"상태:{service.status_code.code if service.status_code else ''} "
+                f"등급:{service.service_grade_code.code if service.service_grade_code else ''} "
+                f"ITGC:{service.itgc_code.code if service.itgc_code else ''} 설명:{service.description}"
             )
             items.append((text, {"type": "service", "id": service.pk, "name": service.name}))
 
-        for comp in Component.objects.all():
+        for cfg in ConfigurationMaster.objects.all():
             text = (
-                f"[자산] {comp.hostname} 시스템명:{comp.system_name} 구분:{comp.server_type} "
-                f"운영개발:{comp.operation_dev} IP:{comp.ip or ''} MW:{comp.mw} RT:{comp.runtime or ''} OS/DBMS:{comp.os_dbms}"
+                f"[구성정보] {cfg.hostname} 구성유형:{cfg.server_type_code.code if cfg.server_type_code else ''} "
+                f"운영개발:{cfg.operation_dev_code.code if cfg.operation_dev_code else ''} "
+                f"IP:{cfg.ip or ''} URL:{cfg.url}"
             )
-            items.append((text, {"type": "component", "id": comp.pk, "name": comp.hostname or comp.asset_mgmt_no}))
+            items.append((text, {"type": "configuration", "id": cfg.pk, "name": cfg.hostname or cfg.asset_mgmt_no}))
+
+        for comp in Component.objects.all():
+            cv = " ".join(p for p in (comp.product_name, comp.version) if (p or "").strip()).strip()
+            text = (
+                f"[컴포넌트] {cv} "
+                f"유형:{comp.component_type_code.code if comp.component_type_code else ''} "
+                f"벤더:{comp.vendor_name} CPE:{comp.cpe_name}"
+            )
+            items.append((text, {"type": "component", "id": comp.pk, "name": cv or comp.product_name}))
 
         for person in PersonMaster.objects.all():
             text = (
-                f"[담당자] {person.name} 역할:{person.role} 회사:{person.company} "
+                f"[담당자] {person.name} 역할:{person.role_code.code if person.role_code else ''} 회사:{person.company} "
                 f"연락:{person.phone} 이메일:{person.email}"
             )
             items.append((text, {"type": "person", "id": person.pk, "name": person.name}))

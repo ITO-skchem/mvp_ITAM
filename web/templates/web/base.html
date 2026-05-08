@@ -98,7 +98,7 @@
             min-height: 0;
             flex: 1;
         }
-        input[type="text"] { width: 360px; max-width: 100%; padding: 6px; }
+        input[type="text"] { padding: 6px; }
         input[type="date"] {
             font-family: inherit;
             font-size: inherit;
@@ -122,9 +122,34 @@
             box-sizing: border-box;
             vertical-align: middle;
         }
-        .list-screen .wrap table td input[type="text"],
-        .list-screen .wrap table td input[type="date"],
-        .list-screen .wrap table td input[type="number"],
+        /*
+         마스터 그리드(#grid): 텍스트·코드(list)·날짜 입력 칸 높이·너비 통일 (글로벌 text 너비와 무관)
+         */
+        .list-screen .wrap table#grid td input:not([type="checkbox"]):not([type="hidden"]) {
+            width: 11rem;
+            min-width: 11rem;
+            max-width: 11rem;
+            height: 32px;
+            padding: 0 8px;
+            font-family: inherit;
+            font-size: inherit;
+            line-height: 1.25;
+            box-sizing: border-box;
+            border: 1px solid #8a8a8a;
+            vertical-align: middle;
+        }
+        .list-screen .wrap table#grid td input[type="checkbox"] {
+            width: auto;
+            min-width: 0;
+            max-width: none;
+            height: auto;
+            margin: 0;
+            vertical-align: middle;
+        }
+        .list-screen .wrap table#grid td input[type="date"]::-webkit-calendar-picker-indicator {
+            flex-shrink: 0;
+            margin-inline-start: -2px;
+        }
         .list-screen .wrap table td select {
             height: 32px;
             padding-top: 6px;
@@ -134,11 +159,35 @@
             box-sizing: border-box;
             border: 1px solid #8a8a8a;
         }
+        .list-screen .wrap table#grid td select {
+            width: 11rem;
+            min-width: 11rem;
+            max-width: 14rem;
+        }
         .wrap { overflow: auto; max-height: none; border: 1px solid #d9d9d9; background: #fff; flex: 1; min-height: 0; }
         .bottom-actions { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; }
         .pager { text-align: center; flex: 1; }
         .pager a { margin: 0 6px; }
         .excel-actions { min-width: 260px; display: flex; justify-content: flex-end; gap: 8px; }
+        .icon-btn {
+            width: 32px;
+            height: 32px;
+            min-width: 32px;
+            border: 1px solid #999;
+            border-radius: 2px;
+            background: #efefef;
+            cursor: pointer;
+            line-height: 1;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            text-decoration: none;
+            color: #000;
+            box-sizing: border-box;
+        }
+        .icon-btn:hover { background: #e5e5e5; }
+        .icon-btn { font-size: 16px; }
+        .hidden-file-input { display: none; }
         .error { color: #b10000; margin: 8px 0; }
         .msg-wrap { margin-bottom: 10px; }
         .msg {
@@ -213,8 +262,8 @@
             <li><a href="{% url 'web:dashboard' %}" class="{% if request.resolver_match.url_name == 'dashboard' %}active{% endif %}">메인</a></li>
             <li><a href="{% url 'web:asset_list' %}" class="{% if request.resolver_match.url_name == 'asset_list' %}active{% endif %}">시스템 통합정보</a></li>
             <li><a href="{% url 'web:service_master_list' %}" class="{% if request.resolver_match.url_name == 'service_master_list' %}active{% endif %}">서비스 마스터</a></li>
-            <li><a href="{% url 'web:component_master_list' %}" class="{% if request.resolver_match.url_name == 'component_master_list' %}active{% endif %}">자산 마스터</a></li>
-            <li><a href="{% url 'web:component_item_master_list' %}" class="{% if request.resolver_match.url_name == 'component_item_master_list' %}active{% endif %}">컴포넌트 마스터</a></li>
+            <li><a href="{% url 'web:configuration_master_list' %}" class="{% if request.resolver_match.url_name == 'configuration_master_list' %}active{% endif %}">구성정보 마스터</a></li>
+            <li><a href="{% url 'web:component_master_list' %}" class="{% if request.resolver_match.url_name == 'component_master_list' %}active{% endif %}">컴포넌트 마스터</a></li>
             <li><a href="{% url 'web:person_master_list' %}" class="{% if request.resolver_match.url_name == 'person_master_list' %}active{% endif %}">담당자 마스터</a></li>
             <li><a href="/admin/" class="{% if '/admin/' in request.path %}active{% endif %}">Admin</a></li>
         </ul>

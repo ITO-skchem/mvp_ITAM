@@ -3,7 +3,7 @@ from django.dispatch import receiver
 
 from core.models import AuditLog
 
-TRACKED_MODELS = {"ServiceMaster", "PersonMaster", "Component", "InfraAsset", "CodeGroup", "Code"}
+TRACKED_MODELS = {"ServiceMaster", "PersonMaster", "ConfigurationMaster", "Component", "InfraAsset", "CodeGroup", "Code"}
 
 
 def get_model_changes(instance):

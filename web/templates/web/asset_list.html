@@ -1,6 +1,6 @@
 {% extends "web/base.html" %}
 
-{% block title %}시스템 통합정보 | ITAM 포털{% endblock %}
+{% block title %}&#49884;&#49828;&#53596; &#53685;&#54633;&#51221;&#48372; | ITAM &#54252;&#53552;{% endblock %}
 
 {% block content %}
 <style>
@@ -78,46 +78,46 @@
     }
 </style>
 <div class="list-screen">
-    <h2>시스템 통합정보</h2>
+    <h2>&#49884;&#49828;&#53596; &#53685;&#54633;&#51221;&#48372;</h2>
     <p class="muted">
-        서비스 마스터·자산 마스터의 <strong>서비스명</strong>이 일치하는 조합으로 행이 만들어지며,
-        서비스/담당자/자산 마스터가 저장·삭제될 때마다 이 목록(InfraAsset)이 자동으로 다시 계산됩니다.
-        이 화면에서는 저장·추가·삭제할 수 없습니다.
+        &#49436;&#48708;&#49828; &#47560;&#49828;&#53552;&middot;&#51088;&#49328; &#47560;&#49828;&#53552;&#51032; <strong>&#49436;&#48708;&#49828;&#47749;</strong>&#51060; &#51068;&#52824;&#54616;&#45716; &#51312;&#54633;&#51004;&#47196; &#54665;&#51060; &#47564;&#46308;&#50612;&#51648;&#47728;,
+        &#49436;&#48708;&#49828;/&#45812;&#45817;&#51088;/&#51088;&#49328; &#47560;&#49828;&#53552;&#44032; &#51200;&#51109;&middot;&#49325;&#51228;&#46112; &#46412;&#47560;&#45796; &#51060; &#47785;&#47197;(InfraAsset)&#51060; &#51088;&#46041;&#51004;&#47196; &#45796;&#49884; &#44228;&#49328;&#46121;&#45768;&#45796;.
+        &#51060; &#54868;&#47732;&#50640;&#49436;&#45716; &#51200;&#51109;&middot;&#52628;&#44032;&middot;&#49325;&#51228;&#54624; &#49688; &#50630;&#49845;&#45768;&#45796;.
     </p>
     <form class="search-box" method="get">
         <input type="text" class="search-input" name="q" value="{{ q }}">
-        <button type="submit">검색</button>
-        <a class="btn-like" href="{% url 'web:asset_list' %}">초기화</a>
-        <span class="muted">조회건수: {{ page_obj.paginator.count }}건</span>
+        <button type="submit">&#44160;&#49353;</button>
+        <a class="btn-like" href="{% url 'web:asset_list' %}">&#52488;&#44592;&#54868;</a>
+        <span class="muted">&#51312;&#54924;&#44148;&#49688;: {{ page_obj.paginator.count }}&#44148;</span>
         <span class="spacer"></span>
     </form>
     <div class="wrap">
         <table id="asset-table">
             <thead>
                 <tr>
-                    <th class="sticky-col sys-col">시스템 관리번호</th>
-                    <th class="sticky-col svc-col">서비스명</th>
+                    <th class="sticky-col sys-col">&#49884;&#49828;&#53596; &#44288;&#47532;&#48264;&#54840;</th>
+                    <th class="sticky-col svc-col">&#49436;&#48708;&#49828;&#47749;</th>
                     <th class="sticky-col host-col sticky-boundary">Hostname</th>
-                    <th>고객사 담당자</th>
-                    <th>Appl. 담당자</th>
-                    <th>Appl. 운영자</th>
-                    <th>서버 담당자</th>
-                    <th>DB 담당자</th>
-                    <th class="server-type-col">서버 구분</th>
-                    <th class="operation-dev-col">운영/개발</th>
-                    <th class="network-zone-col">네트웍 구분</th>
-                    <th>플랫폼 구분</th>
+                    <th>&#44256;&#44061;&#49324; &#45812;&#45817;&#51088;</th>
+                    <th>Appl. &#45812;&#45817;&#51088;</th>
+                    <th>Appl. &#50868;&#50689;&#51088;</th>
+                    <th>&#49436;&#48260; &#45812;&#45817;&#51088;</th>
+                    <th>DB &#45812;&#45817;&#51088;</th>
+                    <th class="server-type-col">&#49436;&#48260; &#44396;&#48516;</th>
+                    <th class="operation-dev-col">&#50868;&#50689;/&#44060;&#48156;</th>
+                    <th class="network-zone-col">&#45348;&#53944;&#5089; &#44396;&#48516;</th>
+                    <th>&#54540;&#47019;&#54268; &#44396;&#48516;</th>
                     <th>IP</th>
                     <th>Port</th>
-                    <th>위치</th>
+                    <th>&#50948;&#52824;</th>
                     <th>MW</th>
                     <th>Runtime</th>
                     <th>OS/DBMS</th>
-                    <th>URL/DB명</th>
-                    <th>SSL 도메인</th>
-                    <th>인증서 포맷</th>
-                    <th>비고1</th>
-                    <th>비고2</th>
+                    <th>URL/DB&#47749;</th>
+                    <th>SSL &#46020;&#47700;&#51064;</th>
+                    <th>&#51064;&#51613;&#49436; &#54252;&#47559;</th>
+                    <th>&#48708;&#44256;1</th>
+                    <th>&#48708;&#44256;2</th>
                 </tr>
             </thead>
             <tbody>
@@ -148,7 +148,7 @@
                     <td>{{ row.remark2 }}</td>
                 </tr>
                 {% empty %}
-                <tr><td colspan="23">조건에 맞는 행이 없습니다. 서비스 마스터·자산 마스터의 서비스명을 맞춰 주세요.</td></tr>
+                <tr><td colspan="23">&#51312;&#44148;&#50640; &#47582;&#45716; &#54665;&#51060; &#50630;&#49845;&#45768;&#45796;. &#49436;&#48708;&#49828; &#47560;&#49828;&#53552;&middot;&#51088;&#49328; &#47560;&#49828;&#53552;&#51032; &#49436;&#48708;&#49828;&#47749;&#51012; &#47582;&#52628;&#50612; &#51452;&#49464;&#50836;.</td></tr>
                 {% endfor %}
             </tbody>
         </table>
@@ -157,7 +157,7 @@
     <div class="bottom-actions">
         <div style="width:260px;"></div>
         <div class="pager">
-            {% if page_obj.has_previous %}<a href="?q={{ q }}&page={{ page_obj.previous_page_number }}">이전</a>{% endif %}
+            {% if page_obj.has_previous %}<a href="?q={{ q }}&page={{ page_obj.previous_page_number }}">&#51060;&#51204;</a>{% endif %}
             {% for num in page_obj.paginator.page_range %}
                 {% if num == page_obj.number %}
                     <strong>{{ num }}</strong>
@@ -165,11 +165,13 @@
                     <a href="?q={{ q }}&page={{ num }}">{{ num }}</a>
                 {% endif %}
             {% endfor %}
-            {% if page_obj.has_next %}<a href="?q={{ q }}&page={{ page_obj.next_page_number }}">다음</a>{% endif %}
+            {% if page_obj.has_next %}<a href="?q={{ q }}&page={{ page_obj.next_page_number }}">&#45796;&#51020;</a>{% endif %}
         </div>
         <div class="excel-actions">
-            <a href="?q={{ q }}&export=1"><button type="button">엑셀 export</button></a>
+            <a class="icon-btn" href="?q={{ q }}&export=1" title="&#50641;&#49472; &#45796;&#50868;&#47196;&#46300;" aria-label="&#50641;&#49472; &#45796;&#50868;&#47196;&#46300;">&#8595;</a>
         </div>
     </div>
 </div>
 {% endblock %}
+
+

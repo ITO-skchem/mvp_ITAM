@@ -39,12 +39,12 @@ class InfraAsset(models.Model):
     extra = models.JSONField("추가필드", default=dict, blank=True)
 
     component = models.ForeignKey(
-        "masters.Component",
+        "masters.ConfigurationMaster",
         null=True,
         blank=True,
         on_delete=models.SET_NULL,
         related_name="infra_assets",
-        verbose_name="자산 마스터",
+        verbose_name="구성정보 마스터",
     )
 
     class Meta:
