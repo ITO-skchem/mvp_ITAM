@@ -2,7 +2,7 @@
 {% block title %}&#52980;&#54252;&#45324;&#53944; &#47560;&#49828;&#53552; | ITAM &#54252;&#53552;{% endblock %}
 {% block content %}
 <div class="list-screen"><h2>&#52980;&#54252;&#45324;&#53944; &#47560;&#49828;&#53552;</h2>
-<form class="search-box" method="get"><input class="search-input" name="q" value="{{ q }}"><button type="submit">&#44160;&#49353;</button><span class="spacer"></span><button type="button" id="save-btn">&#51200;&#51109;</button><button type="button" id="add-btn">&#52628;&#44032;</button><button type="button" id="del-btn">&#49325;&#51228;</button></form>
+<form class="search-box" method="get"><input class="search-input" name="q" value="{{ q }}" placeholder="예) 컴포넌트명:Django 유형:APP"><button type="submit">&#44160;&#49353;</button><span class="spacer"></span><button type="button" id="save-btn">&#51200;&#51109;</button><button type="button" id="add-btn">&#52628;&#44032;</button><button type="button" id="del-btn">&#49325;&#51228;</button></form>
 <datalist id="type-list">{% for v in component_type_codes %}<option value="{{ v }}"></option>{% endfor %}</datalist>
 <datalist id="status-list">{% for v in support_status_codes %}<option value="{{ v }}"></option>{% endfor %}</datalist>
 <form id="grid-form" method="post">{% csrf_token %}<input type="hidden" name="action" value="save"><input type="hidden" name="rows_json" id="rows-json"><input type="hidden" name="deleted_ids_json" id="deleted-json">

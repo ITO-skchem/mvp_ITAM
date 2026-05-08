@@ -25,8 +25,19 @@ class ServiceAdmin(admin.ModelAdmin):
 @admin.register(PersonMaster)
 class PersonAdmin(admin.ModelAdmin):
     search_fields = ("person_mgmt_no", "name", "employee_no", "company", "email")
-    list_display = ("person_mgmt_no", "name", "employee_no", "role_code", "status_code", "company", "deployed_at")
-    list_filter = ("role_code", "status_code", "company")
+    list_display = (
+        "person_mgmt_no",
+        "name",
+        "employee_no",
+        "role_code",
+        "resident_type_code",
+        "affiliation_code",
+        "company",
+        "gender_code",
+        "status_code",
+        "deployed_at",
+    )
+    list_filter = ("role_code", "resident_type_code", "affiliation_code", "gender_code", "status_code", "company")
 
 
 @admin.register(ConfigurationMaster)

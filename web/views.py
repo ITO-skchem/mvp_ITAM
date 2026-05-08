@@ -1,11 +1,15 @@
 import json
+import re
 from io import BytesIO
 from urllib.parse import urlencode
 
 import pandas as pd
+from openpyxl.styles import PatternFill
+from openpyxl.utils import get_column_letter
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required, permission_required
 from django.core.paginator import Paginator
+from django.db import IntegrityError
 from django.db.models import Prefetch, Q
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -21,6 +25,100 @@ from masters.models import (
     ServiceMaster,
 )
 from masters.service_person_grid import SERVICE_PERSON_GRID_COLUMNS, attribute_codes_for_grid
+
+
+SEARCH_TERM_PATTERN = re.compile(r"([^\s:][^:]*?)\s*:\s*([^\s]+)")
+SERVICE_SEARCH_FIELD_ALIASES = {
+    "서비스명": "name",
+    "서비스": "name",
+    "name": "name",
+    "분류": "category_code",
+    "category": "category_code",
+    "구축": "build_type_code",
+    "build": "build_type_code",
+    "itgc": "itgc_code",
+    "등급": "service_grade_code",
+    "grade": "service_grade_code",
+    "상태": "status_code",
+    "status": "status_code",
+}
+SERVICE_ROLE_FIELD_ALIASES = {
+    "dt팀": "SVC_ATTR_PERSON_DT_TEAM",
+    "dt": "SVC_ATTR_PERSON_DT_TEAM",
+    "관리자": "SVC_ATTR_PERSON_ADMIN",
+    "admin": "SVC_ATTR_PERSON_ADMIN",
+    "운영자": "SVC_ATTR_PERSON_OPERATOR",
+    "operator": "SVC_ATTR_PERSON_OPERATOR",
+    "infra담당자": "SVC_ATTR_PERSON_INFRA_OPERATOR",
+    "infra담당": "SVC_ATTR_PERSON_INFRA_OPERATOR",
+    "infra": "SVC_ATTR_PERSON_INFRA_OPERATOR",
+}
+SERVICE_CODE_FIELD_MAP = {
+    "category_code": ("service_category", "category_code"),
+    "build_type_code": ("build_type", "build_type_code"),
+    "itgc_code": ("yn_flag", "itgc_code"),
+    "service_grade_code": ("service_grade", "service_grade_code"),
+    "status_code": ("service_status", "status_code"),
+}
+PERSON_SEARCH_FIELD_ALIASES = {
+    "성명": "name",
+    "이름": "name",
+    "name": "name",
+    "사번": "employee_no",
+    "employee": "employee_no",
+    "회사명": "company",
+    "회사": "company",
+    "역할": "role_code",
+    "상주여부": "resident_type_code",
+    "소속": "affiliation_code",
+    "성별": "gender_code",
+    "상태": "status_code",
+    "담당업무": "assigned_service_names",
+    "업무": "assigned_service_names",
+}
+PERSON_CODE_FIELD_MAP = {
+    "role_code": ("person_role", "role_code"),
+    "resident_type_code": ("resident_type", "resident_type_code"),
+    "affiliation_code": ("affiliation", "affiliation_code"),
+    "gender_code": ("gender", "gender_code"),
+    "status_code": ("person_status", "status_code"),
+}
+CONFIG_SEARCH_FIELD_ALIASES = {
+    "구성명": "hostname",
+    "hostname": "hostname",
+    "ip": "ip",
+    "url": "url",
+    "구성유형": "server_type_code",
+    "운영개발": "operation_dev_code",
+    "운영/개발": "operation_dev_code",
+    "인프라구분": "infra_type_code",
+    "위치": "location_code",
+    "네트워크": "network_zone_code",
+}
+CONFIG_CODE_FIELD_MAP = {
+    "server_type_code": ("config_type", "server_type_code"),
+    "operation_dev_code": ("operation_type", "operation_dev_code"),
+    "infra_type_code": ("infra_type", "infra_type_code"),
+    "location_code": ("infra_location", "location_code"),
+    "network_zone_code": ("network_zone", "network_zone_code"),
+}
+COMPONENT_SEARCH_FIELD_ALIASES = {
+    "컴포넌트명": "product_name",
+    "제품명": "product_name",
+    "product": "product_name",
+    "버전": "version",
+    "version": "version",
+    "벤더명": "vendor_name",
+    "벤더": "vendor_name",
+    "vendor": "vendor_name",
+    "cpe": "cpe_name",
+    "유형": "component_type_code",
+    "지원여부": "support_status_code",
+}
+COMPONENT_CODE_FIELD_MAP = {
+    "component_type_code": ("component_type", "component_type_code"),
+    "support_status_code": ("support_status", "support_status_code"),
+}
 
 
 def split_csv_tokens(raw):
@@ -39,6 +137,119 @@ def parse_person_ids_from_attr_value(raw):
     return ids
 
 
+def normalize_service_search_key(raw_key: str) -> str:
+    return re.sub(r"\s+", "", str(raw_key or "").strip().lower())
+
+
+def parse_structured_terms(query: str):
+    terms = []
+    spans = []
+    for m in SEARCH_TERM_PATTERN.finditer(query or ""):
+        key = normalize_service_search_key(m.group(1))
+        value = (m.group(2) or "").strip()
+        if key and value:
+            terms.append((key, value))
+            spans.append(m.span())
+    if not spans:
+        return [], (query or "").strip()
+    rest = query or ""
+    for s, e in reversed(spans):
+        rest = rest[:s] + " " + rest[e:]
+    return terms, " ".join(rest.split())
+
+
+def matched_service_ids_for_person_keyword(keyword: str, acode: str | None = None):
+    kw = (keyword or "").strip()
+    if not kw:
+        return set()
+    person_ids = set(
+        PersonMaster.objects.filter(Q(name__icontains=kw) | Q(employee_no__icontains=kw)).values_list("id", flat=True)
+    )
+    if not person_ids:
+        return set()
+    attr_qs = ServiceAttribute.objects.filter(attribute_code_id__in=attribute_codes_for_grid())
+    if acode:
+        attr_qs = attr_qs.filter(attribute_code_id=acode)
+    pre = Q()
+    for pid in person_ids:
+        pre |= Q(value__contains=str(pid))
+    if pre:
+        attr_qs = attr_qs.filter(pre)
+    matched_service_ids = set()
+    for service_id, raw in attr_qs.values_list("service_id", "value"):
+        if set(parse_person_ids_from_attr_value(raw)) & person_ids:
+            matched_service_ids.add(service_id)
+    return matched_service_ids
+
+
+def q_for_service_structured_term(key: str, value: str):
+    field_key = SERVICE_SEARCH_FIELD_ALIASES.get(key)
+    if field_key in SERVICE_CODE_FIELD_MAP:
+        group_key, model_field = SERVICE_CODE_FIELD_MAP[field_key]
+        code_ids = list(
+            Code.objects.filter(group__key=group_key, group__is_active=True, is_active=True)
+            .filter(Q(code__icontains=value) | Q(name__icontains=value))
+            .values_list("id", flat=True)
+        )
+        return Q(pk__in=[]) if not code_ids else Q(**{f"{model_field}_id__in": code_ids})
+    if field_key == "name":
+        return Q(name__icontains=value)
+
+    acode = SERVICE_ROLE_FIELD_ALIASES.get(key)
+    if acode:
+        matched_ids = matched_service_ids_for_person_keyword(value, acode=acode)
+        return Q(pk__in=matched_ids) if matched_ids else Q(pk__in=[])
+    return None
+
+
+def q_for_service_code_fields_keyword(keyword: str):
+    kw = (keyword or "").strip()
+    if not kw:
+        return Q()
+    q = Q()
+    for group_key, model_field in SERVICE_CODE_FIELD_MAP.values():
+        code_ids = list(
+            Code.objects.filter(group__key=group_key, group__is_active=True, is_active=True)
+            .filter(Q(code__icontains=kw) | Q(name__icontains=kw))
+            .values_list("id", flat=True)
+        )
+        if code_ids:
+            q |= Q(**{f"{model_field}_id__in": code_ids})
+    return q
+
+
+def q_for_code_fields_keyword(keyword: str, code_field_map: dict[str, tuple[str, str]]):
+    kw = (keyword or "").strip()
+    if not kw:
+        return Q()
+    q = Q()
+    for group_key, model_field in code_field_map.values():
+        code_ids = list(
+            Code.objects.filter(group__key=group_key, group__is_active=True, is_active=True)
+            .filter(Q(code__icontains=kw) | Q(name__icontains=kw))
+            .values_list("id", flat=True)
+        )
+        if code_ids:
+            q |= Q(**{f"{model_field}_id__in": code_ids})
+    return q
+
+
+def matched_person_ids_for_service_keyword(keyword: str):
+    kw = (keyword or "").strip()
+    if not kw:
+        return set()
+    target_service_ids = set(
+        ServiceMaster.objects.filter(Q(name__icontains=kw) | Q(service_mgmt_no__icontains=kw)).values_list("id", flat=True)
+    )
+    if not target_service_ids:
+        return set()
+    matched_person_ids = set()
+    for svc_id, raw in ServiceAttribute.objects.filter(attribute_code_id__in=attribute_codes_for_grid()).values_list("service_id", "value"):
+        if svc_id in target_service_ids:
+            matched_person_ids.update(parse_person_ids_from_attr_value(raw))
+    return matched_person_ids
+
+
 def person_option_map_by_role():
     from collections import defaultdict
 
@@ -49,7 +260,8 @@ def person_option_map_by_role():
         rc = getattr(p.role_code, "code", None) if p.role_code else None
         if rc not in role_codes_needed:
             continue
-        grouped[rc].append({"id": p.pk, "label": f"{p.name} ({p.employee_no})"})
+        emp = (p.employee_no or "").strip()
+        grouped[rc].append({"id": p.pk, "label": f"{p.name} ({emp})" if emp else p.name})
     return grouped
 
 
@@ -161,11 +373,28 @@ def to_excel_response(df, filename):
     return res
 
 
-def to_excel_multi_response(sheet_map, filename):
+def to_excel_multi_response(sheet_map, filename, readonly_columns_map=None, code_columns_map=None):
+    readonly_columns_map = readonly_columns_map or {}
+    code_columns_map = code_columns_map or {}
+    readonly_fill = PatternFill(fill_type="solid", start_color="D9D9D9", end_color="D9D9D9")
+    code_fill = PatternFill(fill_type="solid", start_color="FFF2CC", end_color="FFF2CC")
     out = BytesIO()
     with pd.ExcelWriter(out, engine="openpyxl") as writer:
         for sheet_name, df in sheet_map.items():
-            df.to_excel(writer, index=False, sheet_name=sheet_name[:31])
+            ws_name = sheet_name[:31]
+            df.to_excel(writer, index=False, sheet_name=ws_name)
+            ws = writer.book[ws_name]
+            code_cols = set(code_columns_map.get(sheet_name, []))
+            readonly_cols = set(readonly_columns_map.get(sheet_name, []))
+            for idx, col_name in enumerate(df.columns, start=1):
+                col_letter = get_column_letter(idx)
+                if col_name in code_cols:
+                    for row_idx in range(1, ws.max_row + 1):
+                        ws[f"{col_letter}{row_idx}"].fill = code_fill
+                if col_name not in readonly_cols:
+                    continue
+                for row_idx in range(1, ws.max_row + 1):
+                    ws[f"{col_letter}{row_idx}"].fill = readonly_fill
     content = out.getvalue()
     res = HttpResponse(
         content,
@@ -234,6 +463,10 @@ def code_choice_options(group_key):
 
 # 담당자 역할 코드 개명 이전 코드값 → 현재 코드값 (엑셀 재업로드 등)
 LEGACY_PERSON_ROLE_CODES = {"APPL_OPS": "OPERATOR", "INFRA_OPS": "INFRA_OPERATOR"}
+LEGACY_SERVICE_STATUS_CODES = {"ACTIVE": "운영중", "active": "운영중", "PAUSED": "대기", "paused": "대기", "END": "종료", "end": "종료"}
+LEGACY_BUILD_TYPE_CODES = {"NEW": "SI개발", "RENEWAL": "SI개발", "MAINT": "솔루션"}
+LEGACY_PERSON_STATUS_CODES = {"ACTIVE": "투입", "LEAVE": "대기", "END": "종료", "재직": "투입", "휴직": "대기"}
+LEGACY_YN_FLAG_CODES = {"Y": "예", "N": "아니오"}
 
 
 def code_from_value(group_key, value):
@@ -242,6 +475,14 @@ def code_from_value(group_key, value):
         return None
     if group_key == "person_role" and v in LEGACY_PERSON_ROLE_CODES:
         v = LEGACY_PERSON_ROLE_CODES[v]
+    if group_key == "service_status" and v in LEGACY_SERVICE_STATUS_CODES:
+        v = LEGACY_SERVICE_STATUS_CODES[v]
+    if group_key == "build_type" and v in LEGACY_BUILD_TYPE_CODES:
+        v = LEGACY_BUILD_TYPE_CODES[v]
+    if group_key == "person_status" and v in LEGACY_PERSON_STATUS_CODES:
+        v = LEGACY_PERSON_STATUS_CODES[v]
+    if group_key == "yn_flag" and v in LEGACY_YN_FLAG_CODES:
+        v = LEGACY_YN_FLAG_CODES[v]
     return Code.objects.filter(group__key=group_key, code=v, group__is_active=True, is_active=True).first()
 
 
@@ -337,7 +578,28 @@ def service_master_list(request):
         .order_by("service_mgmt_no")
     )
     if query:
-        qs = qs.filter(build_model_text_search_q(ServiceMaster, query))
+        terms, free_text = parse_structured_terms(query)
+        if terms:
+            for key, value in terms:
+                term_q = q_for_service_structured_term(key, value)
+                if term_q is None:
+                    continue
+                qs = qs.filter(term_q)
+            if free_text:
+                free_q = build_model_text_search_q(ServiceMaster, free_text)
+                free_q |= q_for_service_code_fields_keyword(free_text)
+                matched_ids = matched_service_ids_for_person_keyword(free_text)
+                if matched_ids:
+                    free_q |= Q(id__in=matched_ids)
+                qs = qs.filter(free_q)
+            qs = qs.distinct()
+        else:
+            base_q = build_model_text_search_q(ServiceMaster, query)
+            base_q |= q_for_service_code_fields_keyword(query)
+            matched_ids = matched_service_ids_for_person_keyword(query)
+            if matched_ids:
+                base_q |= Q(id__in=matched_ids)
+            qs = qs.filter(base_q).distinct()
 
     if request.GET.get("export") == "1":
         p_label_map = person_label_map()
@@ -352,20 +614,29 @@ def service_master_list(request):
                 "서비스ID": s.service_mgmt_no,
                 "서비스명": s.name,
                 "분류": getattr(s.category_code, "code", ""),
-                "상태": getattr(s.status_code, "code", ""),
-                "구축": getattr(s.build_type_code, "code", ""),
-                "ITGC": getattr(s.itgc_code, "code", ""),
-                "등급": getattr(s.service_grade_code, "code", ""),
-                "오픈일": s.opened_at,
-                "종료일": s.ended_at,
-                "설명": s.description,
             }
             for col in SERVICE_PERSON_GRID_COLUMNS:
                 row[col["label"]] = role_map.get(col["attribute_code"], "")
+            row.update(
+                {
+                    "구축": getattr(s.build_type_code, "code", ""),
+                    "ITGC": getattr(s.itgc_code, "code", ""),
+                    "등급": getattr(s.service_grade_code, "code", ""),
+                    "상태": getattr(s.status_code, "code", ""),
+                    "오픈일": s.opened_at,
+                    "종료일": s.ended_at,
+                    "설명": s.description,
+                }
+            )
             rows.append(row)
         main_df = pd.DataFrame(rows)
         ref_df = code_reference_df(["service_category", "service_status", "build_type", "yn_flag", "service_grade"])
-        return to_excel_multi_response({"서비스마스터": main_df, "코드참조": ref_df}, "service_master.xlsx")
+        return to_excel_multi_response(
+            {"서비스마스터": main_df, "코드참조": ref_df},
+            "service_master.xlsx",
+            readonly_columns_map={"서비스마스터": [c["label"] for c in SERVICE_PERSON_GRID_COLUMNS]},
+            code_columns_map={"서비스마스터": ["분류", "구축", "ITGC", "등급", "상태"]},
+        )
 
     if request.method == "POST" and request.POST.get("action") == "import":
         up = request.FILES.get("excel_file")
@@ -449,11 +720,11 @@ def service_master_list(request):
             "items": page_obj.object_list,
             "page_obj": page_obj,
             "q": query,
-            "service_category_codes": code_values("service_category"),
-            "service_status_codes": code_values("service_status"),
-            "build_type_codes": code_values("build_type"),
-            "yn_flag_codes": code_values("yn_flag"),
-            "service_grade_codes": code_values("service_grade"),
+            "service_category_options": code_choice_options("service_category"),
+            "service_status_options": code_choice_options("service_status"),
+            "build_type_options": code_choice_options("build_type"),
+            "yn_flag_options": code_choice_options("yn_flag"),
+            "service_grade_options": code_choice_options("service_grade"),
             "service_person_columns": service_person_columns_with_options(),
         },
     )
@@ -464,9 +735,37 @@ def service_master_list(request):
 def person_master_list(request):
     query = request.GET.get("q", "").strip()
     page = request.GET.get("page", "").strip()
-    qs = PersonMaster.objects.select_related("role_code", "status_code").order_by("person_mgmt_no")
+    qs = PersonMaster.objects.select_related(
+        "role_code", "resident_type_code", "affiliation_code", "gender_code", "status_code"
+    ).order_by("person_mgmt_no")
     if query:
-        qs = qs.filter(build_model_text_search_q(PersonMaster, query))
+        terms, free_text = parse_structured_terms(query)
+        if terms:
+            for key, value in terms:
+                field_key = PERSON_SEARCH_FIELD_ALIASES.get(key)
+                if field_key in PERSON_CODE_FIELD_MAP:
+                    term_q = q_for_code_fields_keyword(value, {field_key: PERSON_CODE_FIELD_MAP[field_key]})
+                    qs = qs.filter(term_q if term_q else Q(pk__in=[]))
+                elif field_key == "assigned_service_names":
+                    ids = matched_person_ids_for_service_keyword(value)
+                    qs = qs.filter(Q(id__in=ids) if ids else Q(pk__in=[]))
+                elif field_key in {"name", "employee_no", "company"}:
+                    qs = qs.filter(Q(**{f"{field_key}__icontains": value}))
+            if free_text:
+                free_q = build_model_text_search_q(PersonMaster, free_text)
+                free_q |= q_for_code_fields_keyword(free_text, PERSON_CODE_FIELD_MAP)
+                person_ids = matched_person_ids_for_service_keyword(free_text)
+                if person_ids:
+                    free_q |= Q(id__in=person_ids)
+                qs = qs.filter(free_q)
+            qs = qs.distinct()
+        else:
+            base_q = build_model_text_search_q(PersonMaster, query)
+            base_q |= q_for_code_fields_keyword(query, PERSON_CODE_FIELD_MAP)
+            person_ids = matched_person_ids_for_service_keyword(query)
+            if person_ids:
+                base_q |= Q(id__in=person_ids)
+            qs = qs.filter(base_q).distinct()
 
     if request.GET.get("export") == "1":
         role_to_acode = {c["role_code"]: c["attribute_code"] for c in SERVICE_PERSON_GRID_COLUMNS}
@@ -483,52 +782,74 @@ def person_master_list(request):
                 {
                     "담당자ID": p.person_mgmt_no,
                     "성명": p.name,
-                    "사번": p.employee_no,
-                    "담당업무": join_csv_tokens(names),
                     "역할": getattr(p.role_code, "code", ""),
+                    "담당업무": join_csv_tokens(names),
+                    "상주여부": getattr(p.resident_type_code, "code", ""),
+                    "소속": getattr(p.affiliation_code, "code", ""),
                     "회사명": p.company,
                     "전화번호": p.phone,
                     "내부메일": p.email,
                     "외부메일": p.external_email,
+                    "사번": p.employee_no,
+                    "성별": getattr(p.gender_code, "code", ""),
                     "상태": getattr(p.status_code, "code", ""),
                     "투입일": p.deployed_at,
                     "종료일": p.ended_at,
                 }
             )
         main_df = pd.DataFrame(rows)
-        ref_df = code_reference_df(["person_role", "person_status"])
-        return to_excel_multi_response({"담당자마스터": main_df, "코드참조": ref_df}, "person_master.xlsx")
+        ref_df = code_reference_df(["person_role", "resident_type", "affiliation", "gender", "person_status"])
+        return to_excel_multi_response(
+            {"담당자마스터": main_df, "코드참조": ref_df},
+            "person_master.xlsx",
+            readonly_columns_map={"담당자마스터": ["담당자ID"]},
+            code_columns_map={"담당자마스터": ["역할", "상주여부", "소속", "성별", "상태"]},
+        )
 
     if request.method == "POST" and request.POST.get("action") == "import":
         up = request.FILES.get("excel_file")
         if up:
             df = pd.read_excel(up)
             row_refs = []
+            duplicate_rows = []
             for _, rec in df.fillna("").iterrows():
                 payload = {
-                    "employee_no": str(rec.get("사번", "")).strip(),
+                    "employee_no": str(rec.get("사번", "")).strip() or None,
                     "name": str(rec.get("성명", "")).strip(),
                     "role_code": code_from_value("person_role", rec.get("역할")),
+                    "resident_type_code": code_from_value("resident_type", rec.get("상주여부")),
+                    "affiliation_code": code_from_value("affiliation", rec.get("소속")),
                     "company": str(rec.get("회사명", "")).strip(),
                     "phone": str(rec.get("전화번호", "")).strip(),
                     "email": str(rec.get("내부메일", "")).strip(),
                     "external_email": str(rec.get("외부메일", "")).strip(),
+                    "gender_code": code_from_value("gender", rec.get("성별")),
                     "status_code": code_from_value("person_status", rec.get("상태")),
                     "deployed_at": parse_date(rec.get("투입일")),
                     "ended_at": parse_date(rec.get("종료일")),
                 }
                 person_id = str(rec.get("담당자ID", "")).strip()
                 obj = PersonMaster.objects.filter(person_mgmt_no=person_id).first() if person_id else None
+                if not obj and payload["employee_no"]:
+                    obj = PersonMaster.objects.filter(employee_no=payload["employee_no"]).first()
                 if obj:
                     for k, v in payload.items():
                         setattr(obj, k, v)
-                    obj.save()
-                    row_refs.append((obj, {"assigned_service_names": str(rec.get("담당업무", "")).strip()}))
-                elif payload["name"] and payload["employee_no"]:
-                    obj = PersonMaster.objects.create(**payload)
-                    row_refs.append((obj, {"assigned_service_names": str(rec.get("담당업무", "")).strip()}))
+                    try:
+                        obj.save()
+                        row_refs.append((obj, {"assigned_service_names": str(rec.get("담당업무", "")).strip()}))
+                    except IntegrityError:
+                        duplicate_rows.append(payload["employee_no"])
+                elif payload["name"]:
+                    try:
+                        obj = PersonMaster.objects.create(**payload)
+                        row_refs.append((obj, {"assigned_service_names": str(rec.get("담당업무", "")).strip()}))
+                    except IntegrityError:
+                        duplicate_rows.append(payload["employee_no"] or "(사번없음)")
             for person_obj, row in row_refs:
                 sync_person_service_assignments_from_row(person_obj, row)
+            if duplicate_rows:
+                messages.warning(request, f"중복 사번으로 업로드 제외: {', '.join(sorted(set(duplicate_rows)))}")
             messages.success(request, "담당자 마스터 엑셀 업로드 완료")
         return redirect(build_list_redirect(request.path, query=query, page=page))
 
@@ -537,31 +858,62 @@ def person_master_list(request):
         deleted_ids = json.loads(request.POST.get("deleted_ids_json", "[]"))
         PersonMaster.objects.filter(pk__in=deleted_ids).delete()
         row_refs = []
+        duplicate_rows = []
         for row in rows:
             pk = str(row.get("id", "")).strip()
             payload = {
-                "employee_no": (row.get("employee_no") or "").strip(),
+                "employee_no": (row.get("employee_no") or "").strip() or None,
                 "name": (row.get("name") or "").strip(),
                 "role_code": code_from_value("person_role", row.get("role_code")),
+                "resident_type_code": code_from_value("resident_type", row.get("resident_type_code")),
+                "affiliation_code": code_from_value("affiliation", row.get("affiliation_code")),
                 "company": (row.get("company") or "").strip(),
                 "phone": (row.get("phone") or "").strip(),
                 "email": (row.get("email") or "").strip(),
                 "external_email": (row.get("external_email") or "").strip(),
+                "gender_code": code_from_value("gender", row.get("gender_code")),
                 "status_code": code_from_value("person_status", row.get("status_code")),
                 "deployed_at": parse_date(row.get("deployed_at")),
                 "ended_at": parse_date(row.get("ended_at")),
             }
+            if not payload["name"]:
+                continue
             if pk:
                 obj = PersonMaster.objects.get(pk=pk)
+                exists_other = False
+                if payload["employee_no"]:
+                    exists_other = PersonMaster.objects.filter(employee_no=payload["employee_no"]).exclude(pk=obj.pk).exists()
+                if exists_other:
+                    duplicate_rows.append(payload["employee_no"])
+                    continue
                 for k, v in payload.items():
                     setattr(obj, k, v)
-                obj.save()
-                row_refs.append((obj, row))
-            elif payload["name"]:
-                obj = PersonMaster.objects.create(**payload)
+                try:
+                    obj.save()
+                    row_refs.append((obj, row))
+                except IntegrityError:
+                    duplicate_rows.append(payload["employee_no"])
+            else:
+                obj = PersonMaster.objects.filter(employee_no=payload["employee_no"]).first() if payload["employee_no"] else None
+                if obj:
+                    for k, v in payload.items():
+                        setattr(obj, k, v)
+                    try:
+                        obj.save()
+                    except IntegrityError:
+                        duplicate_rows.append(payload["employee_no"] or "(사번없음)")
+                        continue
+                else:
+                    try:
+                        obj = PersonMaster.objects.create(**payload)
+                    except IntegrityError:
+                        duplicate_rows.append(payload["employee_no"] or "(사번없음)")
+                        continue
                 row_refs.append((obj, row))
         for person_obj, row in row_refs:
             sync_person_service_assignments_from_row(person_obj, row)
+        if duplicate_rows:
+            messages.warning(request, f"중복 사번으로 저장 제외: {', '.join(sorted(set(duplicate_rows)))}")
         messages.success(request, "담당자 마스터 저장 완료")
         return redirect(build_list_redirect(request.path, query=query, page=page))
 
@@ -590,6 +942,10 @@ def person_master_list(request):
             "page_obj": page_obj,
             "q": query,
             "person_role_options": code_choice_options("person_role"),
+            "resident_type_options": code_choice_options("resident_type"),
+            "affiliation_options": code_choice_options("affiliation"),
+            "gender_options": code_choice_options("gender"),
+            "person_status_options": code_choice_options("person_status"),
             "person_status_codes": code_values("person_status"),
             "service_name_options": [s.name for s in service_rows],
         },
@@ -605,7 +961,22 @@ def configuration_master_list(request):
         "server_type_code", "operation_dev_code", "infra_type_code", "location_code", "network_zone_code"
     ).order_by("asset_mgmt_no")
     if query:
-        qs = qs.filter(build_model_text_search_q(ConfigurationMaster, query))
+        terms, free_text = parse_structured_terms(query)
+        if terms:
+            for key, value in terms:
+                field_key = CONFIG_SEARCH_FIELD_ALIASES.get(key)
+                if field_key in CONFIG_CODE_FIELD_MAP:
+                    term_q = q_for_code_fields_keyword(value, {field_key: CONFIG_CODE_FIELD_MAP[field_key]})
+                    qs = qs.filter(term_q if term_q else Q(pk__in=[]))
+                elif field_key in {"hostname", "ip", "url"}:
+                    qs = qs.filter(Q(**{f"{field_key}__icontains": value}))
+            if free_text:
+                free_q = build_model_text_search_q(ConfigurationMaster, free_text)
+                free_q |= q_for_code_fields_keyword(free_text, CONFIG_CODE_FIELD_MAP)
+                qs = qs.filter(free_q)
+            qs = qs.distinct()
+        else:
+            qs = qs.filter(build_model_text_search_q(ConfigurationMaster, query) | q_for_code_fields_keyword(query, CONFIG_CODE_FIELD_MAP)).distinct()
 
     if request.GET.get("export") == "1":
         rows = [
@@ -625,7 +996,11 @@ def configuration_master_list(request):
         ]
         main_df = pd.DataFrame(rows)
         ref_df = code_reference_df(["config_type", "operation_type", "infra_type", "infra_location", "network_zone"])
-        return to_excel_multi_response({"구성정보마스터": main_df, "코드참조": ref_df}, "configuration_master.xlsx")
+        return to_excel_multi_response(
+            {"구성정보마스터": main_df, "코드참조": ref_df},
+            "configuration_master.xlsx",
+            code_columns_map={"구성정보마스터": ["구성유형", "운영/개발", "인프라구분", "위치", "네트워크"]},
+        )
 
     if request.method == "POST" and request.POST.get("action") == "import":
         up = request.FILES.get("excel_file")
@@ -710,7 +1085,22 @@ def component_master_list(request):
     page = request.GET.get("page", "").strip()
     qs = Component.objects.select_related("component_type_code", "support_status_code").order_by("component_mgmt_no")
     if query:
-        qs = qs.filter(build_model_text_search_q(Component, query))
+        terms, free_text = parse_structured_terms(query)
+        if terms:
+            for key, value in terms:
+                field_key = COMPONENT_SEARCH_FIELD_ALIASES.get(key)
+                if field_key in COMPONENT_CODE_FIELD_MAP:
+                    term_q = q_for_code_fields_keyword(value, {field_key: COMPONENT_CODE_FIELD_MAP[field_key]})
+                    qs = qs.filter(term_q if term_q else Q(pk__in=[]))
+                elif field_key in {"product_name", "version", "vendor_name", "cpe_name"}:
+                    qs = qs.filter(Q(**{f"{field_key}__icontains": value}))
+            if free_text:
+                free_q = build_model_text_search_q(Component, free_text)
+                free_q |= q_for_code_fields_keyword(free_text, COMPONENT_CODE_FIELD_MAP)
+                qs = qs.filter(free_q)
+            qs = qs.distinct()
+        else:
+            qs = qs.filter(build_model_text_search_q(Component, query) | q_for_code_fields_keyword(query, COMPONENT_CODE_FIELD_MAP)).distinct()
 
     if request.GET.get("export") == "1":
         rows = [
@@ -729,7 +1119,11 @@ def component_master_list(request):
         ]
         main_df = pd.DataFrame(rows)
         ref_df = code_reference_df(["component_type", "support_status"])
-        return to_excel_multi_response({"컴포넌트마스터": main_df, "코드참조": ref_df}, "component_master.xlsx")
+        return to_excel_multi_response(
+            {"컴포넌트마스터": main_df, "코드참조": ref_df},
+            "component_master.xlsx",
+            code_columns_map={"컴포넌트마스터": ["유형", "지원여부"]},
+        )
 
     if request.method == "POST" and request.POST.get("action") == "import":
         up = request.FILES.get("excel_file")

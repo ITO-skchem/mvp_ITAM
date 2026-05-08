@@ -42,10 +42,10 @@ class Command(BaseCommand):
 
         svc = ServiceMaster.objects.create(
             name="ITAM 포털",
-            category_code=c("service_category", "PORTAL"),
-            status_code=c("service_status", "ACTIVE"),
-            build_type_code=c("build_type", "NEW"),
-            itgc_code=c("yn_flag", "Y"),
+            category_code=c("service_category", "ERP"),
+            status_code=c("service_status", "운영중"),
+            build_type_code=c("build_type", "SI개발"),
+            itgc_code=c("yn_flag", "예"),
             service_grade_code=c("service_grade", "A"),
             opened_at=date(2026, 5, 1),
             description="재정리 스키마 테스트 서비스",
@@ -57,11 +57,13 @@ class Command(BaseCommand):
             employee_no="I00001",
             name="홍길동",
             role_code=c("person_role", "DT_TEAM"),
+            affiliation_code=c("affiliation", "DT팀"),
             company="SKC",
             phone="010-1111-2222",
             email="hong@sktest.local",
             external_email="hong@example.com",
-            status_code=c("person_status", "ACTIVE"),
+            gender_code=c("gender", "남"),
+            status_code=c("person_status", "투입"),
             deployed_at=date(2026, 5, 1),
         )
 

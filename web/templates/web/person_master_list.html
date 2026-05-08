@@ -5,45 +5,56 @@
 <div class="list-screen">
 <h2>&#45812;&#45817;&#51088; &#47560;&#49828;&#53552;</h2>
 <form class="search-box" method="get">
-  <input type="text" class="search-input" name="q" value="{{ q }}"><button type="submit">&#44160;&#49353;</button>
+  <input type="text" class="search-input" name="q" value="{{ q }}" placeholder="예) 성명:홍길동 상태:투입 담당업무:MDM"><button type="submit">&#44160;&#49353;</button>
   <span class="spacer"></span><button type="button" id="save-btn">&#51200;&#51109;</button><button type="button" id="add-btn">&#52628;&#44032;</button><button type="button" id="del-btn">&#49325;&#51228;</button>
+  <div class="excel-actions service-master-toolbar-actions">
+    <a class="icon-btn" href="?q={{ q }}&export=1" title="&#50641;&#49472; &#45796;&#50868;&#47196;&#46300;" aria-label="&#50641;&#49472; &#45796;&#50868;&#47196;&#46300;">&#8595;</a>
+    <button type="button" class="icon-btn" id="excel-import-btn" title="&#50641;&#49472; &#50629;&#47196;&#46300;" aria-label="&#50641;&#49472; &#50629;&#47196;&#46300;">&#8593;</button>
+  </div>
 </form>
-<datalist id="status-list">{% for v in person_status_codes %}<option value="{{ v }}"></option>{% endfor %}</datalist>
+<form id="excel-import-form" method="post" enctype="multipart/form-data" style="display:none;">
+  {% csrf_token %}
+  <input type="hidden" name="action" value="import">
+  <input type="file" id="excel-file-input" class="hidden-file-input" name="excel_file" accept=".xlsx,.xls">
+</form>
 <form id="grid-form" method="post">{% csrf_token %}
 <input type="hidden" name="action" value="save"><input type="hidden" name="rows_json" id="rows-json"><input type="hidden" name="deleted_ids_json" id="deleted-json">
 <div class="wrap"><table id="grid"><thead><tr>
-<th><input type="checkbox" id="all"></th><th>ID</th><th>&#49457;&#47749;</th><th>&#49324;&#48264;</th><th>&#45812;&#45817;&#50629;&#47924;</th><th>&#50669;&#54624;</th>
-<th>&#54924;&#49324;&#47749;</th><th>&#51204;&#54868;&#48264;&#54840;</th><th>&#45236;&#48512;&#47700;&#51068;</th><th>&#50808;&#48512;&#47700;&#51068;</th><th>&#49345;&#53468;</th><th>&#53804;&#51077;&#51068;</th><th>&#51333;&#47308;&#51068;</th>
+<th><input type="checkbox" id="all"></th><th>ID</th><th>&#49457;&#47749;</th><th>&#50669;&#54624;</th><th>&#45812;&#45817;&#50629;&#47924;</th><th>&#49345;&#51452;&#50668;&#48512;</th>
+<th>&#49548;&#49549;</th><th>&#54924;&#49324;&#47749;</th><th>&#51204;&#54868;&#48264;&#54840;</th><th>&#45236;&#48512;&#47700;&#51068;</th><th>&#50808;&#48512;&#47700;&#51068;</th><th>&#49324;&#48264;</th><th>&#49457;&#48324;</th><th>&#49345;&#53468;</th><th>&#53804;&#51077;&#51068;</th><th>&#51333;&#47308;&#51068;</th>
 </tr></thead><tbody>
 {% for p in items %}<tr>
 <td><input type="checkbox" class="row-check"></td>
 <td><input type="hidden" data-field="id" value="{{ p.id }}"><input type="hidden" data-field="person_mgmt_no" value="{{ p.person_mgmt_no }}"><span>{{ p.person_mgmt_no }}</span></td>
-<td><input data-field="name" value="{{ p.name }}"></td><td><input data-field="employee_no" value="{{ p.employee_no }}"></td>
-<td><input data-field="assigned_service_names" list="service-name-list" value="{{ p.assigned_service_names }}"></td>
+<td><input data-field="name" value="{{ p.name }}"></td>
 <td><select data-field="role_code">
 <option value="">&#8212; &#49440;&#53469; &#8212;</option>
 {% for opt in person_role_options %}<option value="{{ opt.code }}"{% if p.role_code and p.role_code.code == opt.code %} selected{% endif %}>{{ opt.name }}</option>{% endfor %}
 </select></td>
+<td><input data-field="assigned_service_names" list="service-name-list" value="{{ p.assigned_service_names }}"></td>
+<td><select data-field="resident_type_code">
+<option value="">&#8212; &#49440;&#53469; &#8212;</option>
+{% for opt in resident_type_options %}<option value="{{ opt.code }}"{% if p.resident_type_code and p.resident_type_code.code == opt.code %} selected{% endif %}>{{ opt.name }}</option>{% endfor %}
+</select></td>
+<td><select data-field="affiliation_code">
+<option value="">&#8212; &#49440;&#53469; &#8212;</option>
+{% for opt in affiliation_options %}<option value="{{ opt.code }}"{% if p.affiliation_code and p.affiliation_code.code == opt.code %} selected{% endif %}>{{ opt.name }}</option>{% endfor %}
+</select></td>
 <td><input data-field="company" value="{{ p.company }}"></td><td><input data-field="phone" value="{{ p.phone }}"></td>
 <td><input data-field="email" value="{{ p.email }}"></td><td><input data-field="external_email" value="{{ p.external_email }}"></td>
-<td><input data-field="status_code" list="status-list" value="{{ p.status_code.code|default:'' }}"></td>
+<td><input data-field="employee_no" value="{{ p.employee_no }}"></td>
+<td><select data-field="gender_code">
+<option value="">&#8212; &#49440;&#53469; &#8212;</option>
+{% for opt in gender_options %}<option value="{{ opt.code }}"{% if p.gender_code and p.gender_code.code == opt.code %} selected{% endif %}>{{ opt.name }}</option>{% endfor %}
+</select></td>
+<td><select data-field="status_code">
+<option value="">&#8212; &#49440;&#53469; &#8212;</option>
+{% for opt in person_status_options %}<option value="{{ opt.code }}"{% if p.status_code and p.status_code.code == opt.code %} selected{% endif %}>{{ opt.name }}</option>{% endfor %}
+</select></td>
 <td><input type="date" data-field="deployed_at" value="{{ p.deployed_at|date:'Y-m-d' }}"></td><td><input type="date" data-field="ended_at" value="{{ p.ended_at|date:'Y-m-d' }}"></td>
 </tr>{% endfor %}
 </tbody></table></div></form></div>
 <datalist id="service-name-list">{% for name in service_name_options %}<option value="{{ name }}"></option>{% endfor %}</datalist>
-<div class="bottom-actions">
-  <div style="width:260px;"></div>
-  <div class="pager"></div>
-  <div class="excel-actions">
-    <a class="icon-btn" href="?q={{ q }}&export=1" title="&#50641;&#49472; &#45796;&#50868;&#47196;&#46300;" aria-label="&#50641;&#49472; &#45796;&#50868;&#47196;&#46300;">&#8595;</a>
-    <form id="excel-import-form" method="post" enctype="multipart/form-data" style="display:inline;">
-      {% csrf_token %}
-      <input type="hidden" name="action" value="import">
-      <input type="file" id="excel-file-input" class="hidden-file-input" name="excel_file" accept=".xlsx,.xls">
-      <button type="button" class="icon-btn" id="excel-import-btn" title="&#50641;&#49472; &#50629;&#47196;&#46300;" aria-label="&#50641;&#49472; &#50629;&#47196;&#46300;">&#8593;</button>
-    </form>
-  </div>
-</div>
 <script>
 (() => { const t=document.getElementById("grid"),f=document.getElementById("grid-form"),r=document.getElementById("rows-json"),d=document.getElementById("deleted-json"),del=[];
 const tbody=t.querySelector("tbody");

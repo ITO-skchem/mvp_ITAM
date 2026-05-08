@@ -2,58 +2,66 @@
 {% load web_extras %}
 {% block title %}&#49436;&#48708;&#49828; &#47560;&#49828;&#53552; | ITAM &#54252;&#53552;{% endblock %}
 {% block content %}
-<div class="list-screen">
+<div class="list-screen service-master-screen">
 <h2>&#49436;&#48708;&#49828; &#47560;&#49828;&#53552;</h2>
 <form class="search-box" method="get">
-  <input type="text" class="search-input" name="q" value="{{ q }}">
+  <input type="text" class="search-input" name="q" value="{{ q }}" placeholder="예) 서비스명:PMO 운영자:민준홍">
   <button type="submit">&#44160;&#49353;</button>
   <span class="spacer"></span>
   <button type="button" id="save-btn">&#51200;&#51109;</button>
   <button type="button" id="add-btn">&#52628;&#44032;</button>
   <button type="button" id="del-btn">&#49325;&#51228;</button>
+  <div class="excel-actions service-master-toolbar-actions">
+    <a class="icon-btn" href="?q={{ q }}&export=1" title="&#50641;&#49472; &#45796;&#50868;&#47196;&#46300;" aria-label="&#50641;&#49472; &#45796;&#50868;&#47196;&#46300;">&#8595;</a>
+    <button type="button" class="icon-btn" id="excel-import-btn" title="&#50641;&#49472; &#50629;&#47196;&#46300;" aria-label="&#50641;&#49472; &#50629;&#47196;&#46300;">&#8593;</button>
+  </div>
 </form>
-<datalist id="service-category-list">{% for v in service_category_codes %}<option value="{{ v }}"></option>{% endfor %}</datalist>
-<datalist id="service-status-list">{% for v in service_status_codes %}<option value="{{ v }}"></option>{% endfor %}</datalist>
-<datalist id="build-type-list">{% for v in build_type_codes %}<option value="{{ v }}"></option>{% endfor %}</datalist>
-<datalist id="yn-list">{% for v in yn_flag_codes %}<option value="{{ v }}"></option>{% endfor %}</datalist>
-<datalist id="grade-list">{% for v in service_grade_codes %}<option value="{{ v }}"></option>{% endfor %}</datalist>
+<form id="excel-import-form" method="post" enctype="multipart/form-data" style="display:none;">
+  {% csrf_token %}
+  <input type="hidden" name="action" value="import">
+  <input type="file" id="excel-file-input" class="hidden-file-input" name="excel_file" accept=".xlsx,.xls">
+</form>
 <form id="grid-form" method="post">{% csrf_token %}
 <input type="hidden" name="action" value="save">
 <input type="hidden" name="rows_json" id="rows-json">
 <input type="hidden" name="deleted_ids_json" id="deleted-json">
 <div class="wrap"><table id="grid"><thead><tr>
-<th><input type="checkbox" id="all"></th><th>ID</th><th>&#49436;&#48708;&#49828;&#47749;</th><th>&#48516;&#47448;</th><th>&#49345;&#53468;</th><th>&#44396;&#52629;</th><th>ITGC</th><th>&#46321;&#44553;</th><th>&#50724;&#54536;&#51068;</th><th>&#51333;&#47308;&#51068;</th>
+<th><input type="checkbox" id="all"></th><th>ID</th><th>&#49436;&#48708;&#49828;&#47749;</th><th>&#48516;&#47448;</th>
 {% for col in service_person_columns %}<th title="&#49549;&#49457;: {{ col.attribute_code }}">{{ col.label }}</th>{% endfor %}
+<th>&#44396;&#52629;</th><th>ITGC</th><th>&#46321;&#44553;</th><th>&#49345;&#53468;</th><th>&#50724;&#54536;&#51068;</th><th>&#51333;&#47308;&#51068;</th>
 <th>&#49444;&#47749;</th>
 </tr></thead><tbody>
 {% for s in items %}<tr>
 <td><input type="checkbox" class="row-check"></td>
 <td><input type="hidden" data-field="id" value="{{ s.id }}"><input type="hidden" data-field="service_mgmt_no" value="{{ s.service_mgmt_no }}"><span>{{ s.service_mgmt_no }}</span></td>
 <td><input data-field="name" value="{{ s.name }}"></td>
-<td><input data-field="category_code" list="service-category-list" value="{{ s.category_code.code|default:'' }}"></td>
-<td><input data-field="status_code" list="service-status-list" value="{{ s.status_code.code|default:'' }}"></td>
-<td><input data-field="build_type_code" list="build-type-list" value="{{ s.build_type_code.code|default:'' }}"></td>
-<td><input data-field="itgc_code" list="yn-list" value="{{ s.itgc_code.code|default:'' }}"></td>
-<td><input data-field="service_grade_code" list="grade-list" value="{{ s.service_grade_code.code|default:'' }}"></td>
+<td><select data-field="category_code">
+<option value="">&#8212; &#49440;&#53469; &#8212;</option>
+{% for opt in service_category_options %}<option value="{{ opt.code }}"{% if s.category_code and s.category_code.code == opt.code %} selected{% endif %}>{{ opt.name }}</option>{% endfor %}
+</select></td>
+{% for col in service_person_columns %}<td><input value="{{ s.person_slot_values|lookup:col.attribute_code }}" readonly class="input-fk-readonly"></td>{% endfor %}
+<td><select data-field="build_type_code">
+<option value="">&#8212; &#49440;&#53469; &#8212;</option>
+{% for opt in build_type_options %}<option value="{{ opt.code }}"{% if s.build_type_code and s.build_type_code.code == opt.code %} selected{% endif %}>{{ opt.name }}</option>{% endfor %}
+</select></td>
+<td><select data-field="itgc_code">
+<option value="">&#8212; &#49440;&#53469; &#8212;</option>
+{% for opt in yn_flag_options %}<option value="{{ opt.code }}"{% if s.itgc_code and s.itgc_code.code == opt.code %} selected{% endif %}>{{ opt.name }}</option>{% endfor %}
+</select></td>
+<td><select data-field="service_grade_code">
+<option value="">&#8212; &#49440;&#53469; &#8212;</option>
+{% for opt in service_grade_options %}<option value="{{ opt.code }}"{% if s.service_grade_code and s.service_grade_code.code == opt.code %} selected{% endif %}>{{ opt.name }}</option>{% endfor %}
+</select></td>
+<td><select data-field="status_code">
+<option value="">&#8212; &#49440;&#53469; &#8212;</option>
+{% for opt in service_status_options %}<option value="{{ opt.code }}"{% if s.status_code and s.status_code.code == opt.code %} selected{% endif %}>{{ opt.name }}</option>{% endfor %}
+</select></td>
 <td><input type="date" data-field="opened_at" value="{{ s.opened_at|date:'Y-m-d' }}"></td>
 <td><input type="date" data-field="ended_at" value="{{ s.ended_at|date:'Y-m-d' }}"></td>
-{% for col in service_person_columns %}<td><input value="{{ s.person_slot_values|lookup:col.attribute_code }}" readonly class="input-fk-readonly"></td>{% endfor %}
 <td><input data-field="description" value="{{ s.description }}"></td>
 </tr>{% endfor %}
-</tbody></table></div></form></div>
-<div class="bottom-actions">
-  <div style="width:260px;"></div>
-  <div class="pager"></div>
-  <div class="excel-actions">
-    <a class="icon-btn" href="?q={{ q }}&export=1" title="&#50641;&#49472; &#45796;&#50868;&#47196;&#46300;" aria-label="&#50641;&#49472; &#45796;&#50868;&#47196;&#46300;">&#8595;</a>
-    <form id="excel-import-form" method="post" enctype="multipart/form-data" style="display:inline;">
-      {% csrf_token %}
-      <input type="hidden" name="action" value="import">
-      <input type="file" id="excel-file-input" class="hidden-file-input" name="excel_file" accept=".xlsx,.xls">
-      <button type="button" class="icon-btn" id="excel-import-btn" title="&#50641;&#49472; &#50629;&#47196;&#46300;" aria-label="&#50641;&#49472; &#50629;&#47196;&#46300;">&#8593;</button>
-    </form>
-  </div>
-</div>
+</tbody></table></div>
+</form></div>
 <script>
 (() => {
   const table = document.getElementById("grid"), form = document.getElementById("grid-form");

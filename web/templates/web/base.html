@@ -52,7 +52,8 @@
             border: 1px solid #999;
             border-radius: 2px;
         }
-        .search-box button[type="submit"] {
+        .search-box button[type="submit"],
+        .search-box .search-reset-btn {
             display: inline-block;
             box-sizing: border-box;
             padding: 6px 10px;
@@ -65,7 +66,8 @@
             line-height: 1.2;
             cursor: pointer;
         }
-        .search-box button[type="submit"]:hover { background: #e5e5e5; }
+        .search-box button[type="submit"]:hover,
+        .search-box .search-reset-btn:hover { background: #e5e5e5; }
         .search-box .btn-like {
             display: inline-flex;
             align-items: center;
@@ -87,10 +89,23 @@
         .list-toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
         .list-toolbar .right button { margin-left: 6px; }
         .list-screen {
+            position: relative;
             display: flex;
             flex-direction: column;
             min-height: 0;
             height: calc(100vh - 170px);
+        }
+        .list-screen #grid-form {
+            display: flex;
+            flex-direction: column;
+            flex: 1;
+            min-height: 0;
+            padding-bottom: 0.15cm;
+        }
+        .list-screen #grid-form .wrap {
+            flex: 1;
+            min-height: 0;
+            overflow: auto;
         }
         .list-screen > form.list-form {
             display: flex;
@@ -126,9 +141,9 @@
          마스터 그리드(#grid): 텍스트·코드(list)·날짜 입력 칸 높이·너비 통일 (글로벌 text 너비와 무관)
          */
         .list-screen .wrap table#grid td input:not([type="checkbox"]):not([type="hidden"]) {
-            width: 11rem;
-            min-width: 11rem;
-            max-width: 11rem;
+            width: 8rem;
+            min-width: 8rem;
+            max-width: 8rem;
             height: 32px;
             padding: 0 8px;
             font-family: inherit;
@@ -137,6 +152,21 @@
             box-sizing: border-box;
             border: 1px solid #8a8a8a;
             vertical-align: middle;
+        }
+        .list-screen .wrap table#grid td input[list] {
+            width: 6rem;
+            min-width: 6rem;
+            max-width: 6rem;
+        }
+        .list-screen .wrap table#grid td input[list][data-field$="_code"] {
+            width: 6rem !important;
+            min-width: 6rem !important;
+            max-width: 6rem !important;
+        }
+        .list-screen .wrap table#grid td select[data-field$="_code"] {
+            width: 6rem !important;
+            min-width: 6rem !important;
+            max-width: 6rem !important;
         }
         .list-screen .wrap table#grid td input[type="checkbox"] {
             width: auto;
@@ -169,6 +199,32 @@
         .pager { text-align: center; flex: 1; }
         .pager a { margin: 0 6px; }
         .excel-actions { min-width: 260px; display: flex; justify-content: flex-end; gap: 8px; }
+        /* 서비스 마스터: 그리드 고정 영역 + 하단(약 2cm) 고정 액션 */
+        .service-master-screen {
+            position: relative;
+            height: calc(100vh - 170px);
+            min-height: 0;
+        }
+        .service-master-screen #grid-form {
+            display: flex;
+            flex-direction: column;
+            flex: 1;
+            min-height: 0;
+            padding-bottom: 0;
+        }
+        .service-master-screen .wrap {
+            overflow: auto;
+            min-height: 0;
+            flex: 1;
+        }
+        .service-master-screen .service-master-toolbar-actions {
+            min-width: 72px;
+            gap: 6px;
+        }
+        .search-box .service-master-toolbar-actions {
+            min-width: 72px;
+            gap: 6px;
+        }
         .icon-btn {
             width: 32px;
             height: 32px;
@@ -278,6 +334,40 @@
         {% endif %}
         {% block content %}{% endblock %}
     </main>
+    <script>
+        (function () {
+            const forms = document.querySelectorAll("form.search-box");
+            forms.forEach((form) => {
+                const qInput = form.querySelector('input[name="q"]');
+                const submitBtn = form.querySelector('button[type="submit"]');
+                if (!qInput || !submitBtn) return;
+
+                // 검색 후 화면이 다시 그려지면 입력창으로 포커스 + 커서를 끝으로 이동
+                qInput.focus();
+                const end = qInput.value.length;
+                try {
+                    qInput.setSelectionRange(end, end);
+                } catch (e) {
+                    // 일부 브라우저/타입에서 setSelectionRange 미지원일 수 있음
+                }
+
+                // 검색 버튼 옆 초기화 버튼(전체조회) 자동 생성
+                let resetBtn = form.querySelector(".search-reset-btn");
+                if (!resetBtn) {
+                    resetBtn = document.createElement("button");
+                    resetBtn.type = "button";
+                    resetBtn.className = "search-reset-btn";
+                    resetBtn.textContent = "초기화";
+                    submitBtn.insertAdjacentElement("afterend", resetBtn);
+                }
+                resetBtn.addEventListener("click", () => {
+                    qInput.value = "";
+                    const action = (form.getAttribute("action") || "").trim() || window.location.pathname;
+                    window.location.href = action;
+                });
+            });
+        })();
+    </script>
     {% if popup_error_summary %}
     <div id="error-summary-modal" class="modal-backdrop" role="dialog" aria-modal="true" aria-label="오류 요약">
         <div class="modal-panel" id="error-summary-panel" tabindex="-1">

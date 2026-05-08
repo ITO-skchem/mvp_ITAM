@@ -113,13 +113,20 @@ class AttributeCode(models.Model):
 
 class PersonMaster(models.Model):
     person_mgmt_no = models.CharField("담당자 ID", max_length=20, unique=True, blank=True, editable=False)
-    employee_no = models.CharField("사번", max_length=50, unique=True)
+    employee_no = models.CharField("사번", max_length=50, unique=True, null=True, blank=True)
     name = models.CharField("성명", max_length=100)
     role_code = models.ForeignKey(Code, null=True, blank=True, on_delete=models.SET_NULL, related_name="person_roles", verbose_name="역할")
+    resident_type_code = models.ForeignKey(
+        Code, null=True, blank=True, on_delete=models.SET_NULL, related_name="person_resident_types", verbose_name="상주 여부"
+    )
+    affiliation_code = models.ForeignKey(
+        Code, null=True, blank=True, on_delete=models.SET_NULL, related_name="person_affiliations", verbose_name="소속"
+    )
     company = models.CharField("회사명", max_length=100, blank=True)
     phone = models.CharField("전화번호", max_length=50, blank=True)
     email = models.EmailField("내부 이메일", blank=True)
     external_email = models.EmailField("외부 이메일", blank=True)
+    gender_code = models.ForeignKey(Code, null=True, blank=True, on_delete=models.SET_NULL, related_name="person_genders", verbose_name="성별")
     status_code = models.ForeignKey(Code, null=True, blank=True, on_delete=models.SET_NULL, related_name="person_statuses", verbose_name="상태")
     deployed_at = models.DateField("투입 일자", null=True, blank=True)
     ended_at = models.DateField("종료 일자", null=True, blank=True)
@@ -130,10 +137,12 @@ class PersonMaster(models.Model):
     def save(self, *args, **kwargs):
         if not self.person_mgmt_no:
             self.person_mgmt_no = _next_prefixed_value(PersonMaster, "person_mgmt_no", "PRS")
+        if not (self.employee_no or "").strip():
+            self.employee_no = None
         super().save(*args, **kwargs)
 
     def __str__(self):
-        return f"{self.name}({self.employee_no})"
+        return f"{self.name}({self.employee_no or '-'})"
 
 
 class ConfigurationMaster(AuditStampMixin):
