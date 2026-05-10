@@ -2,11 +2,16 @@ from django.urls import path
 from django.views.generic import RedirectView
 
 from . import views
+from . import integrated_view as iv
 
 app_name = "web"
 
 urlpatterns = [
     path("", views.dashboard, name="dashboard"),
+    path("integrated-view/", iv.integrated_view, name="integrated_view"),
+    path("api/integrated-view/meta/", iv.integrated_view_meta, name="integrated_view_meta"),
+    path("api/integrated-view/search/", iv.integrated_view_search, name="integrated_view_search"),
+    path("api/integrated-view/export/", iv.integrated_view_export, name="integrated_view_export"),
     path("assets/", views.asset_list, name="asset_list"),
     path("assets/<str:pk>/", views.asset_detail, name="asset_detail"),
     path("masters/services/", views.service_master_list, name="service_master_list"),

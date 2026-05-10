@@ -28,27 +28,27 @@
 <td><input type="hidden" data-field="id" value="{{ p.id }}"><input type="hidden" data-field="person_mgmt_no" value="{{ p.person_mgmt_no }}"><span>{{ p.person_mgmt_no }}</span></td>
 <td><input data-field="name" value="{{ p.name }}"></td>
 <td><select data-field="role_code">
-<option value="">&#8212; &#49440;&#53469; &#8212;</option>
+<option value=""></option>
 {% for opt in person_role_options %}<option value="{{ opt.code }}"{% if p.role_code and p.role_code.code == opt.code %} selected{% endif %}>{{ opt.name }}</option>{% endfor %}
 </select></td>
 <td><input data-field="assigned_service_names" list="service-name-list" value="{{ p.assigned_service_names }}"></td>
 <td><select data-field="resident_type_code">
-<option value="">&#8212; &#49440;&#53469; &#8212;</option>
+<option value=""></option>
 {% for opt in resident_type_options %}<option value="{{ opt.code }}"{% if p.resident_type_code and p.resident_type_code.code == opt.code %} selected{% endif %}>{{ opt.name }}</option>{% endfor %}
 </select></td>
 <td><select data-field="affiliation_code">
-<option value="">&#8212; &#49440;&#53469; &#8212;</option>
+<option value=""></option>
 {% for opt in affiliation_options %}<option value="{{ opt.code }}"{% if p.affiliation_code and p.affiliation_code.code == opt.code %} selected{% endif %}>{{ opt.name }}</option>{% endfor %}
 </select></td>
 <td><input data-field="company" value="{{ p.company }}"></td><td><input data-field="phone" value="{{ p.phone }}"></td>
 <td><input data-field="email" value="{{ p.email }}"></td><td><input data-field="external_email" value="{{ p.external_email }}"></td>
 <td><input data-field="employee_no" value="{{ p.employee_no }}"></td>
 <td><select data-field="gender_code">
-<option value="">&#8212; &#49440;&#53469; &#8212;</option>
+<option value=""></option>
 {% for opt in gender_options %}<option value="{{ opt.code }}"{% if p.gender_code and p.gender_code.code == opt.code %} selected{% endif %}>{{ opt.name }}</option>{% endfor %}
 </select></td>
 <td><select data-field="status_code">
-<option value="">&#8212; &#49440;&#53469; &#8212;</option>
+<option value=""></option>
 {% for opt in person_status_options %}<option value="{{ opt.code }}"{% if p.status_code and p.status_code.code == opt.code %} selected{% endif %}>{{ opt.name }}</option>{% endfor %}
 </select></td>
 <td><input type="date" data-field="deployed_at" value="{{ p.deployed_at|date:'Y-m-d' }}"></td><td><input type="date" data-field="ended_at" value="{{ p.ended_at|date:'Y-m-d' }}"></td>

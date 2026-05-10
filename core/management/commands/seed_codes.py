@@ -1,7 +1,7 @@
 from django.core.management.base import BaseCommand
 
 from core.models import Code, CodeGroup
-from masters.models import Component
+from masters.models import Component, ConfigurationMaster
 from masters.service_person_grid import ensure_service_person_attribute_codes
 
 
@@ -11,6 +11,38 @@ LEGACY_COMPONENT_TYPE_CODE_MAP = {
     "MIDDLEWARE": "middleware",
     "OS": "OS",
     "DB": "DB",
+}
+
+# 이전 operation_type 코드 → 새 코드
+LEGACY_OPERATION_TYPE_CODE_MAP = {
+    "OPS": "운영",
+    "DEV": "개발",
+    "BOTH": "운영",  # 운영/개발 통합 → 운영으로 흡수
+}
+
+# 이전 config_type 코드 → 새 코드
+LEGACY_CONFIG_TYPE_CODE_MAP = {
+    "ETC": "기타",
+    "CACHE": "기타",
+}
+
+# 이전 infra_type 코드 → 새 코드
+LEGACY_INFRA_TYPE_CODE_MAP = {
+    "ONPREM": "OnPrem",
+    "AZURE": "기타",
+    "GCP": "기타",
+}
+
+# 이전 infra_location 코드 → 새 코드
+LEGACY_INFRA_LOCATION_CODE_MAP = {
+    "DC1": "판교",
+    "DC2": "청주",
+}
+
+# 이전 network_zone 코드 → 새 코드
+LEGACY_NETWORK_ZONE_CODE_MAP = {
+    "INTERNAL": "내부망",
+    "EXTERNAL": "외부망",
 }
 
 
@@ -23,6 +55,44 @@ def migrate_component_type_foreign_keys():
         new = Code.objects.filter(group__key="component_type", code=new_code).first()
         if old and new and old.pk != new.pk:
             Component.objects.filter(component_type_code=old).update(component_type_code=new)
+
+
+def migrate_operation_type_foreign_keys():
+    """운영/개발 코드 체계 변경 시 기존 ConfigurationMaster FK를 새 Code 행으로 이전한다."""
+    for old_code, new_code in LEGACY_OPERATION_TYPE_CODE_MAP.items():
+        if old_code == new_code:
+            continue
+        old = Code.objects.filter(group__key="operation_type", code=old_code).first()
+        new = Code.objects.filter(group__key="operation_type", code=new_code).first()
+        if old and new and old.pk != new.pk:
+            ConfigurationMaster.objects.filter(operation_dev_code=old).update(operation_dev_code=new)
+
+
+def _migrate_config_master_fk(group_key: str, attr: str, mapping: dict[str, str]) -> None:
+    """ConfigurationMaster의 단일 FK 필드를 group_key 코드 매핑에 따라 일괄 이전한다."""
+    for old_code, new_code in mapping.items():
+        if old_code == new_code:
+            continue
+        old = Code.objects.filter(group__key=group_key, code=old_code).first()
+        new = Code.objects.filter(group__key=group_key, code=new_code).first()
+        if old and new and old.pk != new.pk:
+            ConfigurationMaster.objects.filter(**{attr: old}).update(**{attr: new})
+
+
+def migrate_config_type_foreign_keys():
+    _migrate_config_master_fk("config_type", "server_type_code", LEGACY_CONFIG_TYPE_CODE_MAP)
+
+
+def migrate_infra_type_foreign_keys():
+    _migrate_config_master_fk("infra_type", "infra_type_code", LEGACY_INFRA_TYPE_CODE_MAP)
+
+
+def migrate_infra_location_foreign_keys():
+    _migrate_config_master_fk("infra_location", "location_code", LEGACY_INFRA_LOCATION_CODE_MAP)
+
+
+def migrate_network_zone_foreign_keys():
+    _migrate_config_master_fk("network_zone", "network_zone_code", LEGACY_NETWORK_ZONE_CODE_MAP)
 
 
 SEED_GROUPS = {
@@ -70,11 +140,11 @@ SEED_GROUPS = {
         ("기타", "기타"),
     ],
     "mapping_status": [("ACTIVE", "활성"), ("INACTIVE", "비활성"), ("END", "종료")],
-    "config_type": [("WEB", "WEB"), ("WAS", "WAS"), ("DB", "DB"), ("CACHE", "CACHE"), ("ETC", "기타")],
-    "operation_type": [("OPS", "운영"), ("DEV", "개발"), ("BOTH", "운영/개발")],
-    "infra_type": [("ONPREM", "온프레미스"), ("AWS", "AWS"), ("AZURE", "AZURE"), ("GCP", "GCP")],
-    "infra_location": [("DC1", "센터1"), ("DC2", "센터2"), ("AWS", "AWS")],
-    "network_zone": [("DMZ", "DMZ"), ("INTERNAL", "내부"), ("EXTERNAL", "외부")],
+    "config_type": [("WEB", "WEB"), ("WAS", "WAS"), ("DB", "DB"), ("기타", "기타")],
+    "operation_type": [("운영", "운영"), ("개발", "개발"), ("스테이징", "스테이징"), ("백업", "백업")],
+    "infra_type": [("AWS", "AWS"), ("OnPrem", "OnPrem"), ("기타", "기타")],
+    "infra_location": [("AWS", "AWS"), ("판교", "판교"), ("청주", "청주"), ("울산", "울산")],
+    "network_zone": [("DMZ", "DMZ"), ("내부망", "내부망"), ("외부망", "외부망")],
     "component_type": [
         ("language", "language"),
         ("runtime", "runtime"),
@@ -106,8 +176,18 @@ class Command(BaseCommand):
                     code=code,
                     defaults={"name": name, "sort_order": ci * 10, "is_active": True, "related_code": None},
                 )
-            Code.objects.filter(group=group).exclude(code__in=valid_codes).update(is_active=False)
             if group_key == "component_type":
                 migrate_component_type_foreign_keys()
+            elif group_key == "operation_type":
+                migrate_operation_type_foreign_keys()
+            elif group_key == "config_type":
+                migrate_config_type_foreign_keys()
+            elif group_key == "infra_type":
+                migrate_infra_type_foreign_keys()
+            elif group_key == "infra_location":
+                migrate_infra_location_foreign_keys()
+            elif group_key == "network_zone":
+                migrate_network_zone_foreign_keys()
+            Code.objects.filter(group=group).exclude(code__in=valid_codes).update(is_active=False)
         ensure_service_person_attribute_codes()
         self.stdout.write(self.style.SUCCESS("재정리 공통 코드 시드 완료"))

@@ -36,24 +36,24 @@
 <td><input type="hidden" data-field="id" value="{{ s.id }}"><input type="hidden" data-field="service_mgmt_no" value="{{ s.service_mgmt_no }}"><span>{{ s.service_mgmt_no }}</span></td>
 <td><input data-field="name" value="{{ s.name }}"></td>
 <td><select data-field="category_code">
-<option value="">&#8212; &#49440;&#53469; &#8212;</option>
+<option value=""></option>
 {% for opt in service_category_options %}<option value="{{ opt.code }}"{% if s.category_code and s.category_code.code == opt.code %} selected{% endif %}>{{ opt.name }}</option>{% endfor %}
 </select></td>
 {% for col in service_person_columns %}<td><input value="{{ s.person_slot_values|lookup:col.attribute_code }}" readonly class="input-fk-readonly"></td>{% endfor %}
 <td><select data-field="build_type_code">
-<option value="">&#8212; &#49440;&#53469; &#8212;</option>
+<option value=""></option>
 {% for opt in build_type_options %}<option value="{{ opt.code }}"{% if s.build_type_code and s.build_type_code.code == opt.code %} selected{% endif %}>{{ opt.name }}</option>{% endfor %}
 </select></td>
 <td><select data-field="itgc_code">
-<option value="">&#8212; &#49440;&#53469; &#8212;</option>
+<option value=""></option>
 {% for opt in yn_flag_options %}<option value="{{ opt.code }}"{% if s.itgc_code and s.itgc_code.code == opt.code %} selected{% endif %}>{{ opt.name }}</option>{% endfor %}
 </select></td>
 <td><select data-field="service_grade_code">
-<option value="">&#8212; &#49440;&#53469; &#8212;</option>
+<option value=""></option>
 {% for opt in service_grade_options %}<option value="{{ opt.code }}"{% if s.service_grade_code and s.service_grade_code.code == opt.code %} selected{% endif %}>{{ opt.name }}</option>{% endfor %}
 </select></td>
 <td><select data-field="status_code">
-<option value="">&#8212; &#49440;&#53469; &#8212;</option>
+<option value=""></option>
 {% for opt in service_status_options %}<option value="{{ opt.code }}"{% if s.status_code and s.status_code.code == opt.code %} selected{% endif %}>{{ opt.name }}</option>{% endfor %}
 </select></td>
 <td><input type="date" data-field="opened_at" value="{{ s.opened_at|date:'Y-m-d' }}"></td>

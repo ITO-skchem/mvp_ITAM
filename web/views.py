@@ -19,6 +19,8 @@ from assets.models import InfraAsset
 from core.models import AuditLog, Code
 from masters.models import (
     Component,
+    ComponentAlias,
+    ConfigurationComponentMapping,
     ConfigurationMaster,
     PersonMaster,
     ServiceAttribute,
@@ -141,6 +143,32 @@ def sync_service_configuration_mappings(configuration: ConfigurationMaster, conn
         if svc and svc.pk not in seen:
             seen.add(svc.pk)
             ServiceConfigurationMapping.objects.create(service=svc, configuration=configuration)
+
+
+def sync_configuration_component_mappings(configuration: ConfigurationMaster, row: dict, type_codes: list[str]) -> None:
+    """구성-컴포넌트 매핑을 그리드 행의 유형별 컴포넌트 ID CSV(`component_<type>` 키)로부터 교체한다.
+
+    각 셀 값은 쉼표 구분된 컴포넌트 PK 문자열이며, 유형이 다른 컴포넌트가 섞여 들어와도
+    실제 컴포넌트의 `component_type_code` 값을 신뢰해 저장한다.
+    """
+    desired_ids: list[int] = []
+    for tc in type_codes:
+        raw = row.get(f"component_{tc}", "")
+        for token in split_csv_tokens(raw):
+            if token.isdigit():
+                desired_ids.append(int(token))
+    seen = set()
+    unique_ids = []
+    for cid in desired_ids:
+        if cid in seen:
+            continue
+        seen.add(cid)
+        unique_ids.append(cid)
+    valid_ids = set(Component.objects.filter(pk__in=unique_ids).values_list("pk", flat=True))
+    ConfigurationComponentMapping.objects.filter(configuration=configuration).delete()
+    for cid in unique_ids:
+        if cid in valid_ids:
+            ConfigurationComponentMapping.objects.create(configuration=configuration, component_id=cid)
 
 
 def parse_person_ids_from_attr_value(raw):
@@ -483,6 +511,11 @@ LEGACY_SERVICE_STATUS_CODES = {"ACTIVE": "운영중", "active": "운영중", "PA
 LEGACY_BUILD_TYPE_CODES = {"NEW": "SI개발", "RENEWAL": "SI개발", "MAINT": "솔루션"}
 LEGACY_PERSON_STATUS_CODES = {"ACTIVE": "투입", "LEAVE": "대기", "END": "종료", "재직": "투입", "휴직": "대기"}
 LEGACY_YN_FLAG_CODES = {"Y": "예", "N": "아니오"}
+LEGACY_OPERATION_TYPE_CODES = {"OPS": "운영", "DEV": "개발", "BOTH": "운영", "운영/개발": "운영"}
+LEGACY_CONFIG_TYPE_CODES = {"ETC": "기타", "CACHE": "기타"}
+LEGACY_INFRA_TYPE_CODES = {"ONPREM": "OnPrem", "온프레미스": "OnPrem", "AZURE": "기타", "GCP": "기타"}
+LEGACY_INFRA_LOCATION_CODES = {"DC1": "판교", "DC2": "청주", "센터1": "판교", "센터2": "청주"}
+LEGACY_NETWORK_ZONE_CODES = {"INTERNAL": "내부망", "EXTERNAL": "외부망", "내부": "내부망", "외부": "외부망"}
 
 
 def code_from_value(group_key, value):
@@ -501,7 +534,25 @@ def code_from_value(group_key, value):
         v = LEGACY_YN_FLAG_CODES[v]
     if group_key == "component_type" and v in LEGACY_COMPONENT_TYPE_CODES:
         v = LEGACY_COMPONENT_TYPE_CODES[v]
-    return Code.objects.filter(group__key=group_key, code=v, group__is_active=True, is_active=True).first()
+    if group_key == "operation_type" and v in LEGACY_OPERATION_TYPE_CODES:
+        v = LEGACY_OPERATION_TYPE_CODES[v]
+    if group_key == "config_type" and v in LEGACY_CONFIG_TYPE_CODES:
+        v = LEGACY_CONFIG_TYPE_CODES[v]
+    if group_key == "infra_type" and v in LEGACY_INFRA_TYPE_CODES:
+        v = LEGACY_INFRA_TYPE_CODES[v]
+    if group_key == "infra_location" and v in LEGACY_INFRA_LOCATION_CODES:
+        v = LEGACY_INFRA_LOCATION_CODES[v]
+    if group_key == "network_zone" and v in LEGACY_NETWORK_ZONE_CODES:
+        v = LEGACY_NETWORK_ZONE_CODES[v]
+    base_qs = Code.objects.filter(group__key=group_key, group__is_active=True, is_active=True)
+    by_code = base_qs.filter(code=v).first()
+    if by_code:
+        return by_code
+    # 엑셀·화면은 Code.name(표시명)으로 내려받는 경우 동일하게 FK로 해석
+    by_name = base_qs.filter(name=v).first()
+    if by_name:
+        return by_name
+    return base_qs.filter(name__iexact=v).first()
 
 
 def audit_actor_label(request):
@@ -631,16 +682,16 @@ def service_master_list(request):
             row = {
                 "서비스ID": s.service_mgmt_no,
                 "서비스명": s.name,
-                "분류": getattr(s.category_code, "code", ""),
+                "분류": getattr(s.category_code, "name", "") if s.category_code else "",
             }
             for col in SERVICE_PERSON_GRID_COLUMNS:
                 row[col["label"]] = role_map.get(col["attribute_code"], "")
             row.update(
                 {
-                    "구축": getattr(s.build_type_code, "code", ""),
-                    "ITGC": getattr(s.itgc_code, "code", ""),
-                    "등급": getattr(s.service_grade_code, "code", ""),
-                    "상태": getattr(s.status_code, "code", ""),
+                    "구축": getattr(s.build_type_code, "name", "") if s.build_type_code else "",
+                    "ITGC": getattr(s.itgc_code, "name", "") if s.itgc_code else "",
+                    "등급": getattr(s.service_grade_code, "name", "") if s.service_grade_code else "",
+                    "상태": getattr(s.status_code, "name", "") if s.status_code else "",
                     "오픈일": s.opened_at,
                     "종료일": s.ended_at,
                     "설명": s.description,
@@ -800,17 +851,17 @@ def person_master_list(request):
                 {
                     "담당자ID": p.person_mgmt_no,
                     "성명": p.name,
-                    "역할": getattr(p.role_code, "code", ""),
+                    "역할": getattr(p.role_code, "name", "") if p.role_code else "",
                     "담당업무": join_csv_tokens(names),
-                    "상주여부": getattr(p.resident_type_code, "code", ""),
-                    "소속": getattr(p.affiliation_code, "code", ""),
+                    "상주여부": getattr(p.resident_type_code, "name", "") if p.resident_type_code else "",
+                    "소속": getattr(p.affiliation_code, "name", "") if p.affiliation_code else "",
                     "회사명": p.company,
                     "전화번호": p.phone,
                     "내부메일": p.email,
                     "외부메일": p.external_email,
                     "사번": p.employee_no,
-                    "성별": getattr(p.gender_code, "code", ""),
-                    "상태": getattr(p.status_code, "code", ""),
+                    "성별": getattr(p.gender_code, "name", "") if p.gender_code else "",
+                    "상태": getattr(p.status_code, "name", "") if p.status_code else "",
                     "투입일": p.deployed_at,
                     "종료일": p.ended_at,
                 }
@@ -983,7 +1034,13 @@ def configuration_master_list(request):
             Prefetch(
                 "service_configuration_mappings",
                 queryset=ServiceConfigurationMapping.objects.select_related("service"),
-            )
+            ),
+            Prefetch(
+                "configuration_component_mappings",
+                queryset=ConfigurationComponentMapping.objects.select_related(
+                    "component", "component__component_type_code"
+                ),
+            ),
         )
         .order_by("asset_mgmt_no")
     )
@@ -1013,8 +1070,19 @@ def configuration_master_list(request):
             ).distinct()
 
     if request.GET.get("export") == "1":
-        rows = [
-            {
+        component_type_codes_list = code_values("component_type")
+        rows = []
+        for c in qs:
+            labels_by_type: dict[str, list[str]] = {tc: [] for tc in component_type_codes_list}
+            for m in c.configuration_component_mappings.all():
+                comp = m.component
+                if not comp:
+                    continue
+                tc = getattr(comp.component_type_code, "code", "") or ""
+                if tc in labels_by_type:
+                    label = " ".join(p for p in (comp.product_name or "", comp.version or "") if p.strip()).strip()
+                    labels_by_type[tc].append(label or comp.component_mgmt_no)
+            row = {
                 "구성ID": c.asset_mgmt_no,
                 "구성명": c.hostname,
                 "연결서비스": c.connected_services_label,
@@ -1022,19 +1090,24 @@ def configuration_master_list(request):
                 "운영/개발": getattr(c.operation_dev_code, "code", ""),
                 "인프라구분": getattr(c.infra_type_code, "code", ""),
                 "위치": getattr(c.location_code, "code", ""),
-                "네트워크": getattr(c.network_zone_code, "code", ""),
+                "네트웍구분": getattr(c.network_zone_code, "code", ""),
                 "IP": c.ip or "",
                 "Port": c.port,
                 "URL": c.url,
             }
-            for c in qs
-        ]
+            for tc in component_type_codes_list:
+                row[tc] = ", ".join(labels_by_type[tc])
+            rows.append(row)
         main_df = pd.DataFrame(rows)
-        ref_df = code_reference_df(["config_type", "operation_type", "infra_type", "infra_location", "network_zone"])
+        ref_df = code_reference_df(
+            ["config_type", "operation_type", "infra_type", "infra_location", "network_zone", "component_type"]
+        )
+        code_cols_cfg = ["구성유형", "운영/개발", "인프라구분", "위치", "네트웍구분", *component_type_codes_list]
         return to_excel_multi_response(
             {"구성정보마스터": main_df, "코드참조": ref_df},
             "configuration_master.xlsx",
-            code_columns_map={"구성정보마스터": ["구성유형", "운영/개발", "인프라구분", "위치", "네트워크"]},
+            readonly_columns_map={"구성정보마스터": ["구성ID"]},
+            code_columns_map={"구성정보마스터": code_cols_cfg},
         )
 
     if request.method == "POST" and request.POST.get("action") == "import":
@@ -1042,14 +1115,22 @@ def configuration_master_list(request):
         actor = audit_actor_label(request)
         if up:
             df = pd.read_excel(up)
+            component_type_codes_list = code_values("component_type")
+            comp_label_to_id: dict[str, int] = {}
+            for comp in Component.objects.all():
+                label = " ".join(p for p in (comp.product_name or "", comp.version or "") if p.strip()).strip()
+                if label and label not in comp_label_to_id:
+                    comp_label_to_id[label] = comp.pk
             for _, rec in df.fillna("").iterrows():
+                # 네트웍 구분 컬럼은 신규 라벨 우선, 구 라벨("네트워크")도 호환 유지
+                nz_raw = rec.get("네트웍구분") if "네트웍구분" in rec.index else rec.get("네트워크", "")
                 payload = {
                     "hostname": str(rec.get("구성명", "")).strip(),
                     "server_type_code": code_from_value("config_type", rec.get("구성유형")),
                     "operation_dev_code": code_from_value("operation_type", rec.get("운영/개발")),
                     "infra_type_code": code_from_value("infra_type", rec.get("인프라구분")),
                     "location_code": code_from_value("infra_location", rec.get("위치")),
-                    "network_zone_code": code_from_value("network_zone", rec.get("네트워크")),
+                    "network_zone_code": code_from_value("network_zone", nz_raw),
                     "ip": str(rec.get("IP", "")).strip() or None,
                     "port": str(rec.get("Port", "")).strip(),
                     "url": str(rec.get("URL", "")).strip(),
@@ -1065,6 +1146,25 @@ def configuration_master_list(request):
                 elif payload["hostname"]:
                     obj = ConfigurationMaster.objects.create(**payload, created_by=actor, updated_by=actor)
                     sync_service_configuration_mappings(obj, str(rec.get("연결서비스", "")))
+                else:
+                    obj = None
+                if obj is not None:
+                    desired_ids: list[int] = []
+                    for tc in component_type_codes_list:
+                        raw_cell = str(rec.get(tc, "")).strip()
+                        if not raw_cell:
+                            continue
+                        for token in [t.strip() for t in raw_cell.split(",") if t.strip()]:
+                            cid = comp_label_to_id.get(token)
+                            if cid is not None:
+                                desired_ids.append(cid)
+                    seen: set[int] = set()
+                    ConfigurationComponentMapping.objects.filter(configuration=obj).delete()
+                    for cid in desired_ids:
+                        if cid in seen:
+                            continue
+                        seen.add(cid)
+                        ConfigurationComponentMapping.objects.create(configuration=obj, component_id=cid)
             messages.success(request, "구성정보 마스터 엑셀 업로드 완료")
         return redirect(build_list_redirect(request.path, query=query, page=page))
 
@@ -1072,6 +1172,7 @@ def configuration_master_list(request):
         rows = json.loads(request.POST.get("rows_json", "[]"))
         deleted_ids = json.loads(request.POST.get("deleted_ids_json", "[]"))
         actor = audit_actor_label(request)
+        component_type_codes_list = code_values("component_type")
         with transaction.atomic():
             ConfigurationMaster.objects.filter(pk__in=deleted_ids).delete()
             for row in rows:
@@ -1088,6 +1189,7 @@ def configuration_master_list(request):
                     "port": (row.get("port") or "").strip(),
                     "url": (row.get("url") or "").strip(),
                 }
+                obj = None
                 if pk:
                     obj = ConfigurationMaster.objects.get(pk=pk)
                     for k, v in payload.items():
@@ -1098,6 +1200,8 @@ def configuration_master_list(request):
                 elif payload["hostname"]:
                     obj = ConfigurationMaster.objects.create(**payload, created_by=actor, updated_by=actor)
                     sync_service_configuration_mappings(obj, connected_raw)
+                if obj:
+                    sync_configuration_component_mappings(obj, row, component_type_codes_list)
         messages.success(request, "구성정보 마스터 저장 완료")
         return redirect(build_list_redirect(request.path, query=query, page=page))
 
@@ -1106,6 +1210,57 @@ def configuration_master_list(request):
     service_name_options = sorted(
         {n for n in ServiceMaster.objects.values_list("name", flat=True) if (n or "").strip()}
     )
+
+    component_type_options = code_choice_options("component_type")
+    component_type_codes_list = [opt["code"] for opt in component_type_options]
+    active_type_codes = set(component_type_codes_list)
+
+    components_all: list[dict] = []
+    for comp in (
+        Component.objects.select_related("component_type_code")
+        .order_by("product_name", "version", "component_mgmt_no")
+    ):
+        type_code = getattr(comp.component_type_code, "code", "") or ""
+        if type_code not in active_type_codes:
+            continue
+        label = " ".join(p for p in (comp.product_name or "", comp.version or "") if p.strip()).strip()
+        components_all.append(
+            {
+                "id": comp.pk,
+                "product_name": comp.product_name or "",
+                "version": comp.version or "",
+                "vendor_name": comp.vendor_name or "",
+                "type": type_code,
+                "label": label or comp.component_mgmt_no,
+            }
+        )
+
+    aliases_by_product: dict[str, list[str]] = {}
+    for product_name, alias in ComponentAlias.objects.values_list("product_name", "alias").order_by("product_name", "alias"):
+        aliases_by_product.setdefault(product_name, []).append(alias)
+
+    for c in page_obj.object_list:
+        ids_by_type: dict[str, list[str]] = {tc: [] for tc in component_type_codes_list}
+        labels_by_type: dict[str, list[str]] = {tc: [] for tc in component_type_codes_list}
+        for mapping in c.configuration_component_mappings.all():
+            comp = mapping.component
+            if not comp:
+                continue
+            type_code = getattr(comp.component_type_code, "code", "") or ""
+            if type_code not in ids_by_type:
+                continue
+            ids_by_type[type_code].append(str(comp.pk))
+            label = " ".join(p for p in (comp.product_name or "", comp.version or "") if p.strip()).strip()
+            labels_by_type[type_code].append(label or comp.component_mgmt_no)
+        c.component_columns = [
+            {
+                "type": tc,
+                "ids": ",".join(ids_by_type[tc]),
+                "labels": ", ".join(labels_by_type[tc]),
+            }
+            for tc in component_type_codes_list
+        ]
+
     return render(
         request,
         "web/configuration_master_list.html",
@@ -1119,6 +1274,10 @@ def configuration_master_list(request):
             "infra_location_codes": code_values("infra_location"),
             "network_zone_codes": code_values("network_zone"),
             "service_name_options": service_name_options,
+            "component_type_options": component_type_options,
+            "components_all_json": json.dumps(components_all, ensure_ascii=False),
+            "component_type_codes_json": json.dumps(component_type_codes_list, ensure_ascii=False),
+            "aliases_by_product_json": json.dumps(aliases_by_product, ensure_ascii=False),
         },
     )
 
@@ -1153,12 +1312,12 @@ def component_master_list(request):
                 "컴포넌트ID": c.component_mgmt_no,
                 "컴포넌트명": c.product_name,
                 "버전": c.version,
-                "유형": getattr(c.component_type_code, "code", ""),
+                "유형": getattr(c.component_type_code, "name", "") if c.component_type_code else "",
                 "벤더명": c.vendor_name,
                 "CPE": c.cpe_name,
                 "EOS": c.eos_date,
                 "EOL": c.eol_date,
-                "지원여부": getattr(c.support_status_code, "code", ""),
+                "지원여부": getattr(c.support_status_code, "code", "") if c.support_status_code else "",
             }
             for c in qs
         ]

@@ -202,6 +202,31 @@ class Component(AuditStampMixin):
         return " ".join(p for p in (self.product_name, self.version) if (p or "").strip()).strip()
 
 
+class ComponentAlias(models.Model):
+    """컴포넌트 검색을 위한 product_name 별 alias 사전.
+
+    예) product_name="OpenJDK", alias="java" 행이 존재하면 "java" 검색 시
+    OpenJDK가 결과에 포함된다. 같은 alias가 여러 product_name에 매핑될 수 있다.
+    """
+
+    id = models.BigAutoField(primary_key=True, verbose_name="컴포넌트 alias ID")
+    product_name = models.CharField("제품명", max_length=200)
+    alias = models.CharField("Alias", max_length=200)
+
+    class Meta:
+        unique_together = [("product_name", "alias")]
+        indexes = [
+            models.Index(fields=["alias"]),
+            models.Index(fields=["product_name"]),
+        ]
+        ordering = ["product_name", "alias"]
+        verbose_name = "컴포넌트 alias"
+        verbose_name_plural = "컴포넌트 alias"
+
+    def __str__(self):
+        return f"{self.product_name} ← {self.alias}"
+
+
 class ServiceAttribute(models.Model):
     id = models.BigAutoField(primary_key=True, verbose_name="서비스 속성 ID")
     service = models.ForeignKey(ServiceMaster, on_delete=models.CASCADE, related_name="service_attributes", verbose_name="서비스 ID")

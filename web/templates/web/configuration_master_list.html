@@ -1,32 +1,445 @@
 {% extends "web/base.html" %}
 {% block title %}&#44396;&#49457;&#51221;&#48372; &#47560;&#49828;&#53552; | ITAM &#54252;&#53552;{% endblock %}
 {% block content %}
+<style>
+  .list-screen .wrap table#grid td.cell-component-map { cursor: pointer; }
+  .list-screen .wrap table#grid td.cell-component-map input.component-display-input {
+    width: 12rem; min-width: 12rem; max-width: 12rem;
+    background: #fafafa; cursor: pointer;
+  }
+  .cmm-form-row { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
+  .cmm-form-row label { width: 5rem; flex: 0 0 5rem; font-size: 13px; color: #444; }
+  .cmm-form-row input,
+  .cmm-form-row select { padding: 6px 8px; font-size: 13px; min-height: 30px; box-sizing: border-box; }
+  .cmm-form-row input[type="text"] { width: 16rem; }
+  .cmm-form-row select { width: 16rem; }
+  .cmm-form-row select[disabled] { background: #f0f0f0; color: #555; }
+  .cmm-msg { margin-left: 8px; font-size: 12px; min-height: 16px; }
+  .cmm-msg.err { color: #b10000; }
+  .cmm-msg.ok { color: #1a6b1a; }
+  .cmm-msg.warn { color: #a86b00; }
+  .cmm-mapped-list { list-style: none; padding-left: 0; margin: 6px 0 0 0; max-height: 160px; overflow: auto; }
+  .cmm-mapped-list li {
+    display: flex; align-items: center; gap: 8px; padding: 4px 6px; border: 1px solid #e3e3e3;
+    border-radius: 4px; margin-bottom: 4px; background: #fafafa; font-size: 13px; cursor: pointer;
+  }
+  .cmm-mapped-list li.focus { background: #e7efff; border-color: #99b3df; }
+  .cmm-mapped-list li .focus-mark { width: 1rem; flex: 0 0 1rem; color: #1f2a44; font-weight: bold; }
+  .cmm-foot-actions { display: flex; gap: 8px; justify-content: flex-end; }
+  .cmm-foot-actions button { padding: 6px 14px; cursor: pointer; border-radius: 4px; }
+  .cmm-add { background: #1f6b3a; border: 1px solid #1f6b3a; color: #fff; }
+  .cmm-edit { background: #1f2a44; border: 1px solid #1f2a44; color: #fff; }
+  .cmm-del { background: #b22020; border: 1px solid #b22020; color: #fff; }
+  .cmm-cancel { background: #efefef; border: 1px solid #999; color: #222; }
+</style>
 <div class="list-screen service-master-screen"><h2>&#44396;&#49457;&#51221;&#48372; &#47560;&#49828;&#53552;</h2>
-<form class="search-box" method="get"><input class="search-input" name="q" value="{{ q }}" placeholder="예) 구성명:WEB 운영/개발:운영"><button type="submit">&#44160;&#49353;</button><span class="spacer"></span><button type="button" id="save-btn">&#51200;&#51109;</button><button type="button" id="add-btn">&#52628;&#44032;</button><button type="button" id="del-btn">&#49325;&#51228;</button></form>
-<datalist id="type-list">{% for v in config_type_codes %}<option value="{{ v }}"></option>{% endfor %}</datalist>
-<datalist id="op-list">{% for v in operation_type_codes %}<option value="{{ v }}"></option>{% endfor %}</datalist>
-<datalist id="infra-list">{% for v in infra_type_codes %}<option value="{{ v }}"></option>{% endfor %}</datalist>
-<datalist id="loc-list">{% for v in infra_location_codes %}<option value="{{ v }}"></option>{% endfor %}</datalist>
-<datalist id="net-list">{% for v in network_zone_codes %}<option value="{{ v }}"></option>{% endfor %}</datalist>
+<form class="search-box" method="get">
+  <input class="search-input" name="q" value="{{ q }}" placeholder="예) 구성명:WEB 운영/개발:운영">
+  <button type="submit">&#44160;&#49353;</button>
+  <span class="spacer"></span>
+  <button type="button" id="save-btn">&#51200;&#51109;</button>
+  <button type="button" id="add-btn">&#52628;&#44032;</button>
+  <button type="button" id="del-btn">&#49325;&#51228;</button>
+  <div class="excel-actions service-master-toolbar-actions">
+    <a class="icon-btn" href="?q={{ q }}&export=1" title="&#50641;&#49472; &#45796;&#50868;&#47196;&#46300;" aria-label="&#50641;&#49472; &#45796;&#50868;&#47196;&#46300;">&#8595;</a>
+    <button type="button" class="icon-btn" id="excel-import-btn" title="&#50641;&#49472; &#50629;&#47196;&#46300;" aria-label="&#50641;&#49472; &#50629;&#47196;&#46300;">&#8593;</button>
+  </div>
+</form>
+<form id="excel-import-form" method="post" enctype="multipart/form-data" style="display:none;">
+  {% csrf_token %}
+  <input type="hidden" name="action" value="import">
+  <input type="file" id="excel-file-input" class="hidden-file-input" name="excel_file" accept=".xlsx,.xls">
+</form>
 <datalist id="svc-name-list">{% for v in service_name_options %}<option value="{{ v|escape }}"></option>{% endfor %}</datalist>
 <form id="grid-form" method="post">{% csrf_token %}<input type="hidden" name="action" value="save"><input type="hidden" name="rows_json" id="rows-json"><input type="hidden" name="deleted_ids_json" id="deleted-json">
-<div class="wrap"><table id="grid"><thead><tr><th><input type="checkbox" id="all"></th><th>ID</th><th>&#44396;&#49457;&#47749;</th><th>&#50672;&#44208;&#49436;&#48708;&#49828;</th><th>&#44396;&#49457;&#50976;&#54805;</th><th>&#50868;&#50689;/&#44060;&#48156;</th><th>&#51064;&#54532;&#46972;&#44396;&#48516;</th><th>&#50948;&#52824;</th><th>&#45348;&#53944;&#50892;&#53356;</th><th>IP</th><th>Port</th><th>URL</th></tr></thead><tbody>
+<div class="wrap"><table id="grid"><thead><tr><th><input type="checkbox" id="all"></th><th>ID</th><th>&#44396;&#49457;&#47749;</th><th>&#50672;&#44208;&#49436;&#48708;&#49828;</th><th>&#44396;&#49457;&#50976;&#54805;</th><th>&#50868;&#50689;/&#44060;&#48156;</th><th>&#51064;&#54532;&#46972;&#44396;&#48516;</th><th>&#50948;&#52824;</th><th>&#45348;&#53944;&#50892;&#53356;</th><th>IP</th><th>Port</th><th>URL</th>{% for opt in component_type_options %}<th title="컴포넌트 매핑 ({{ opt.code }})">{{ opt.code }}</th>{% endfor %}</tr></thead><tbody>
 {% for c in items %}<tr><td><input type="checkbox" class="row-check"></td>
 <td><input type="hidden" data-field="id" value="{{ c.id }}"><input type="hidden" data-field="asset_mgmt_no" value="{{ c.asset_mgmt_no }}"><span>{{ c.asset_mgmt_no }}</span></td>
-<td><input data-field="hostname" value="{{ c.hostname }}"></td><td><input data-field="connected_service" list="svc-name-list" value="{{ c.connected_services_label }}"></td><td><input data-field="server_type_code" list="type-list" value="{{ c.server_type_code.code|default:'' }}"></td>
-<td><input data-field="operation_dev_code" list="op-list" value="{{ c.operation_dev_code.code|default:'' }}"></td><td><input data-field="infra_type_code" list="infra-list" value="{{ c.infra_type_code.code|default:'' }}"></td>
-<td><input data-field="location_code" list="loc-list" value="{{ c.location_code.code|default:'' }}"></td><td><input data-field="network_zone_code" list="net-list" value="{{ c.network_zone_code.code|default:'' }}"></td>
-<td><input data-field="ip" value="{{ c.ip }}"></td><td><input data-field="port" value="{{ c.port }}"></td><td><input data-field="url" value="{{ c.url }}"></td></tr>{% endfor %}
+<td><input data-field="hostname" value="{{ c.hostname }}"></td><td><input data-field="connected_service" list="svc-name-list" value="{{ c.connected_services_label }}"></td><td><select data-field="server_type_code"><option value=""></option>{% for v in config_type_codes %}<option value="{{ v }}"{% if c.server_type_code.code == v %} selected{% endif %}>{{ v }}</option>{% endfor %}</select></td>
+<td><select data-field="operation_dev_code"><option value=""></option>{% for v in operation_type_codes %}<option value="{{ v }}"{% if c.operation_dev_code.code == v %} selected{% endif %}>{{ v }}</option>{% endfor %}</select></td><td><select data-field="infra_type_code"><option value=""></option>{% for v in infra_type_codes %}<option value="{{ v }}"{% if c.infra_type_code.code == v %} selected{% endif %}>{{ v }}</option>{% endfor %}</select></td>
+<td><select data-field="location_code"><option value=""></option>{% for v in infra_location_codes %}<option value="{{ v }}"{% if c.location_code.code == v %} selected{% endif %}>{{ v }}</option>{% endfor %}</select></td><td><select data-field="network_zone_code"><option value=""></option>{% for v in network_zone_codes %}<option value="{{ v }}"{% if c.network_zone_code.code == v %} selected{% endif %}>{{ v }}</option>{% endfor %}</select></td>
+<td><input data-field="ip" value="{{ c.ip }}"></td><td><input data-field="port" value="{{ c.port }}"></td><td><input data-field="url" value="{{ c.url }}"></td>{% for col in c.component_columns %}<td class="cell-component-map" data-component-type="{{ col.type }}"><input type="hidden" data-field="component_{{ col.type }}" value="{{ col.ids }}"><input type="text" class="component-display-input" readonly value="{{ col.labels }}" title="클릭하여 매핑 편집"></td>{% endfor %}</tr>{% endfor %}
 </tbody></table></div></form></div>
-<div class="bottom-actions">
-<div style="width:260px;"></div><div class="pager"></div>
-<div class="excel-actions">
-<a class="icon-btn" href="?q={{ q }}&export=1" title="&#50641;&#49472; &#45796;&#50868;&#47196;&#46300;" aria-label="&#50641;&#49472; &#45796;&#50868;&#47196;&#46300;">&#8595;</a>
-<form id="excel-import-form" method="post" enctype="multipart/form-data" style="display:inline;">{% csrf_token %}<input type="hidden" name="action" value="import"><input type="file" id="excel-file-input" class="hidden-file-input" name="excel_file" accept=".xlsx,.xls"><button type="button" class="icon-btn" id="excel-import-btn" title="&#50641;&#49472; &#50629;&#47196;&#46300;" aria-label="&#50641;&#49472; &#50629;&#47196;&#46300;">&#8593;</button></form>
-</div></div>
+
+<script id="components-all-data" type="application/json">{{ components_all_json|safe }}</script>
+<script id="component-type-codes-data" type="application/json">{{ component_type_codes_json|safe }}</script>
+<script id="aliases-by-product-data" type="application/json">{{ aliases_by_product_json|safe }}</script>
+
+<div id="cmm-modal" class="modal-backdrop" role="dialog" aria-modal="true" aria-label="구성-컴포넌트 매핑" style="display:none;">
+  <div class="modal-panel" style="width:600px;">
+    <div class="modal-head">
+      <h3 class="modal-title">구성정보 - 컴포넌트 매핑 <span id="cmm-trigger-label" style="color:#1f2a44; font-weight: normal; font-size: 12px;"></span></h3>
+    </div>
+    <div class="modal-body">
+      <div class="cmm-form-row">
+        <label for="cmm-search-input">검색</label>
+        <input id="cmm-search-input" type="text" autocomplete="off" placeholder="컴포넌트명 또는 alias (예: java, dotnet, mssql)">
+        <span id="cmm-search-msg" class="cmm-msg"></span>
+      </div>
+      <div class="cmm-form-row">
+        <label for="cmm-name-select">컴포넌트명</label>
+        <select id="cmm-name-select"></select>
+      </div>
+      <div class="cmm-form-row">
+        <label for="cmm-version-select">버전</label>
+        <select id="cmm-version-select"></select>
+      </div>
+      <div class="cmm-form-row">
+        <label for="cmm-type-select">유형</label>
+        <select id="cmm-type-select" disabled title="선택된 컴포넌트의 유형 (수정 불가)"></select>
+      </div>
+      <div class="cmm-form-row">
+        <label for="cmm-vendor-select">벤더명</label>
+        <select id="cmm-vendor-select" disabled title="선택된 컴포넌트의 벤더명 (수정 불가)"></select>
+      </div>
+      <div>
+        <h4 style="margin: 10px 0 4px 0; font-size: 13px; color: #333;">현재 매핑된 컴포넌트 (행 전체 · 클릭으로 포커스)</h4>
+        <ul id="cmm-mapped-list" class="cmm-mapped-list"></ul>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <div class="cmm-foot-actions">
+        <button type="button" id="cmm-cancel-btn" class="cmm-cancel">취소</button>
+        <button type="button" id="cmm-del-btn" class="cmm-del">삭제</button>
+        <button type="button" id="cmm-edit-btn" class="cmm-edit">수정</button>
+        <button type="button" id="cmm-add-btn" class="cmm-add">추가</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
-(()=>{const t=grid,f=document.getElementById("grid-form"),r=document.getElementById("rows-json"),d=document.getElementById("deleted-json"),del=[];const tbody=t.querySelector("tbody");const markRowDirty=(el)=>{const tr=el.closest("tr");const chk=tr?tr.querySelector(".row-check"):null;if(chk)chk.checked=true;};tbody.addEventListener("input",e=>{const el=e.target;if(el&&el.matches("[data-field]")&&el.type!=="hidden")markRowDirty(el);});tbody.addEventListener("change",e=>{const el=e.target;if(el&&el.matches("[data-field]")&&el.type!=="hidden")markRowDirty(el);});all.onchange=e=>t.querySelectorAll(".row-check").forEach(x=>x.checked=e.target.checked);document.getElementById("add-btn").onclick=()=>{const tr=t.querySelector("tbody tr");if(!tr)return;const n=tr.cloneNode(true);n.querySelectorAll("input").forEach(i=>{if(i.dataset.field==="id")i.value="";else if(i.dataset.field!=="asset_mgmt_no")i.value="";if(i.classList.contains("row-check"))i.checked=true;});t.querySelector("tbody").appendChild(n);};document.getElementById("del-btn").onclick=()=>t.querySelectorAll("tbody tr").forEach(tr=>{const c=tr.querySelector(".row-check");if(c&&c.checked){const id=tr.querySelector('[data-field="id"]').value;if(id)del.push(id);tr.remove();}});document.getElementById("save-btn").onclick=()=>{const rows=[...t.querySelectorAll("tbody tr")].filter(tr=>tr.querySelector(".row-check")?.checked).map(tr=>{const o={};tr.querySelectorAll("[data-field]").forEach(i=>o[i.dataset.field]=i.value);return o;});r.value=JSON.stringify(rows);d.value=JSON.stringify(del);f.submit();};const importBtn=document.getElementById("excel-import-btn"),importInput=document.getElementById("excel-file-input"),importForm=document.getElementById("excel-import-form");importBtn?.addEventListener("click",()=>importInput?.click());importInput?.addEventListener("change",()=>{if(importInput.files&&importInput.files.length>0)importForm.submit();});})();
+(()=>{const t=grid,f=document.getElementById("grid-form"),r=document.getElementById("rows-json"),d=document.getElementById("deleted-json"),del=[];const tbody=t.querySelector("tbody");const markRowDirty=(el)=>{const tr=el.closest("tr");const chk=tr?tr.querySelector(".row-check"):null;if(chk)chk.checked=true;};tbody.addEventListener("input",e=>{const el=e.target;if(el&&el.matches("[data-field]")&&el.type!=="hidden")markRowDirty(el);});tbody.addEventListener("change",e=>{const el=e.target;if(el&&el.matches("[data-field]")&&el.type!=="hidden")markRowDirty(el);});all.onchange=e=>t.querySelectorAll(".row-check").forEach(x=>x.checked=e.target.checked);document.getElementById("add-btn").onclick=()=>{const tr=t.querySelector("tbody tr");if(!tr)return;const n=tr.cloneNode(true);n.querySelectorAll("input,select").forEach(i=>{if(i.dataset.field==="id")i.value="";else if(i.dataset.field!=="asset_mgmt_no")i.value="";if(i.classList&&i.classList.contains("row-check"))i.checked=true;});n.querySelectorAll(".component-display-input").forEach(i=>{i.value="";});t.querySelector("tbody").appendChild(n);};document.getElementById("del-btn").onclick=()=>t.querySelectorAll("tbody tr").forEach(tr=>{const c=tr.querySelector(".row-check");if(c&&c.checked){const id=tr.querySelector('[data-field="id"]').value;if(id)del.push(id);tr.remove();}});document.getElementById("save-btn").onclick=()=>{const rows=[...t.querySelectorAll("tbody tr")].filter(tr=>tr.querySelector(".row-check")?.checked).map(tr=>{const o={};tr.querySelectorAll("[data-field]").forEach(i=>o[i.dataset.field]=i.value);return o;});r.value=JSON.stringify(rows);d.value=JSON.stringify(del);f.submit();};const importBtn=document.getElementById("excel-import-btn"),importInput=document.getElementById("excel-file-input"),importForm=document.getElementById("excel-import-form");importBtn?.addEventListener("click",()=>importInput?.click());importInput?.addEventListener("change",()=>{if(importInput.files&&importInput.files.length>0)importForm.submit();});})();
+</script>
+
+<script>
+(() => {
+  const allNode = document.getElementById("components-all-data");
+  const typesNode = document.getElementById("component-type-codes-data");
+  const aliasesNode = document.getElementById("aliases-by-product-data");
+  let componentsAll = [];
+  let typeCodes = [];
+  let aliasesByProduct = {};
+  try { componentsAll = JSON.parse(allNode?.textContent || "[]"); } catch (e) { componentsAll = []; }
+  try { typeCodes = JSON.parse(typesNode?.textContent || "[]"); } catch (e) { typeCodes = []; }
+  try { aliasesByProduct = JSON.parse(aliasesNode?.textContent || "{}"); } catch (e) { aliasesByProduct = {}; }
+
+  const allById = {};
+  const componentsByProduct = {};
+  const distinctProducts = [];
+  componentsAll.forEach(it => {
+    allById[String(it.id)] = it;
+    if (!componentsByProduct[it.product_name]) {
+      componentsByProduct[it.product_name] = [];
+      distinctProducts.push(it.product_name);
+    }
+    componentsByProduct[it.product_name].push(it);
+  });
+
+  const modal = document.getElementById("cmm-modal");
+  const elTriggerLabel = document.getElementById("cmm-trigger-label");
+  const elSearch = document.getElementById("cmm-search-input");
+  const elMsg = document.getElementById("cmm-search-msg");
+  const elNameSel = document.getElementById("cmm-name-select");
+  const elVerSel = document.getElementById("cmm-version-select");
+  const elTypeSel = document.getElementById("cmm-type-select");
+  const elVendorSel = document.getElementById("cmm-vendor-select");
+  const elMappedList = document.getElementById("cmm-mapped-list");
+  const elBtnCancel = document.getElementById("cmm-cancel-btn");
+  const elBtnAdd = document.getElementById("cmm-add-btn");
+  const elBtnEdit = document.getElementById("cmm-edit-btn");
+  const elBtnDel = document.getElementById("cmm-del-btn");
+
+  const escapeHtml = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
+  const labelOf = (it) => it ? [it.product_name, it.version].filter(Boolean).join(" ").trim() : "";
+  const fullLabelOf = (it) => it
+    ? [it.product_name, it.version, it.type ? `[${it.type}]` : "", it.vendor_name ? `(${it.vendor_name})` : ""].filter(Boolean).join(" ")
+    : "";
+
+  function clearMsg() { elMsg.className = "cmm-msg"; elMsg.textContent = ""; }
+  function setMsg(text, level) {
+    elMsg.className = "cmm-msg " + (level || "");
+    elMsg.textContent = text || "";
+  }
+
+  const state = {
+    row: null,
+    triggerCell: null,
+    triggerType: "",
+    workingIds: [],
+    originalFocusId: "",
+    currentProduct: "",
+    currentId: "",
+  };
+
+  function productMatches(product, query) {
+    if (!query) return true;
+    const q = query.toLowerCase();
+    if (product.toLowerCase().includes(q)) return true;
+    const aliases = aliasesByProduct[product] || [];
+    return aliases.some(a => (a || "").toLowerCase().includes(q));
+  }
+
+  function rebuildNameSelect(query) {
+    const matches = distinctProducts.filter(p => productMatches(p, query));
+    elNameSel.innerHTML = matches.map(p => `<option value="${escapeHtml(p)}">${escapeHtml(p)}</option>`).join("");
+    return matches;
+  }
+
+  function rebuildVersionSelect(productName) {
+    const items = componentsByProduct[productName] || [];
+    elVerSel.innerHTML = items.map(it => `<option value="${it.id}">${escapeHtml(it.version || "-")}</option>`).join("");
+    return items;
+  }
+
+  function refreshTypeVendor(componentId) {
+    const it = allById[String(componentId || "")];
+    elTypeSel.innerHTML = it
+      ? `<option value="${escapeHtml(it.type || "")}">${escapeHtml(it.type || "")}</option>`
+      : `<option value=""></option>`;
+    elVendorSel.innerHTML = it
+      ? `<option value="${escapeHtml(it.vendor_name || "")}">${escapeHtml(it.vendor_name || "-")}</option>`
+      : `<option value=""></option>`;
+  }
+
+  function selectProduct(productName) {
+    state.currentProduct = productName || "";
+    if (!productName) {
+      elVerSel.innerHTML = "";
+      state.currentId = "";
+      refreshTypeVendor("");
+      return;
+    }
+    elNameSel.value = productName;
+    const versions = rebuildVersionSelect(productName);
+    if (versions.length) {
+      selectVersion(versions[0].id);
+    } else {
+      state.currentId = "";
+      refreshTypeVendor("");
+    }
+  }
+
+  function selectVersion(componentId) {
+    const sid = String(componentId || "");
+    state.currentId = sid;
+    if (sid) {
+      elVerSel.value = sid;
+      refreshTypeVendor(sid);
+      const it = allById[sid];
+      if (it && it.product_name !== state.currentProduct) {
+        state.currentProduct = it.product_name;
+        elNameSel.value = it.product_name;
+      }
+    } else {
+      refreshTypeVendor("");
+    }
+  }
+
+  function collectRowIds(row) {
+    const ids = [];
+    const seen = new Set();
+    row.querySelectorAll('td.cell-component-map input[type="hidden"][data-field^="component_"]').forEach(h => {
+      (h.value || "").split(",").map(s => s.trim()).filter(Boolean).forEach(x => {
+        if (!seen.has(x)) { seen.add(x); ids.push(x); }
+      });
+    });
+    return ids;
+  }
+
+  function collectCellIds(cell) {
+    const h = cell?.querySelector('input[type="hidden"][data-field^="component_"]');
+    return (h?.value || "").split(",").map(s => s.trim()).filter(Boolean);
+  }
+
+  function writeRowIds(row, ids) {
+    const byType = {};
+    typeCodes.forEach(tc => { byType[tc] = []; });
+    const orphans = [];
+    ids.forEach(id => {
+      const it = allById[String(id)];
+      if (!it) return;
+      const tc = it.type;
+      if (byType[tc]) byType[tc].push(String(id));
+      else orphans.push(String(id));
+    });
+    row.querySelectorAll('td.cell-component-map').forEach(cell => {
+      const tc = cell.getAttribute("data-component-type") || "";
+      const cellIds = byType[tc] || [];
+      const hidden = cell.querySelector('input[type="hidden"][data-field]');
+      const display = cell.querySelector("input.component-display-input");
+      if (!hidden || !display) return;
+      hidden.value = cellIds.join(",");
+      display.value = cellIds.map(id => labelOf(allById[id])).filter(Boolean).join(", ");
+      hidden.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    const rowCheck = row.querySelector(".row-check");
+    if (rowCheck) rowCheck.checked = true;
+    if (orphans.length) {
+      console.warn("Orphan component ids (type not in active type codes):", orphans);
+    }
+  }
+
+  function renderMapped() {
+    elMappedList.innerHTML = "";
+    if (!state.workingIds.length) {
+      const li = document.createElement("li");
+      li.style.cssText = "border:none;background:transparent;color:#888;font-style:italic;cursor:default;";
+      li.textContent = "(매핑된 컴포넌트가 없습니다)";
+      elMappedList.appendChild(li);
+      return;
+    }
+    state.workingIds.forEach(id => {
+      const it = allById[id];
+      const isFocus = id === state.originalFocusId;
+      const li = document.createElement("li");
+      li.className = isFocus ? "focus" : "";
+      li.dataset.id = id;
+      li.innerHTML =
+        `<span class="focus-mark">${isFocus ? "▶" : ""}</span>` +
+        `<span>${escapeHtml(fullLabelOf(it) || `(존재하지 않는 컴포넌트 #${id})`)}</span>`;
+      elMappedList.appendChild(li);
+    });
+    elMappedList.querySelectorAll("li[data-id]").forEach(li => {
+      li.addEventListener("click", () => {
+        const id = li.dataset.id;
+        state.originalFocusId = id;
+        const it = allById[id];
+        if (it) {
+          elSearch.value = "";
+          rebuildNameSelect("");
+          selectProduct(it.product_name);
+          selectVersion(id);
+        }
+        renderMapped();
+        clearMsg();
+      });
+    });
+  }
+
+  function openForCell(cell) {
+    const row = cell.closest("tr");
+    if (!row) return;
+    state.row = row;
+    state.triggerCell = cell;
+    state.triggerType = cell.getAttribute("data-component-type") || "";
+    state.workingIds = collectRowIds(row);
+    const cellIds = collectCellIds(cell);
+    state.originalFocusId = cellIds[0] || "";
+
+    elTriggerLabel.textContent = state.triggerType
+      ? `(트리거: ${state.triggerType} 컬럼 · 검색은 alias 포함)`
+      : "";
+    elSearch.value = "";
+    clearMsg();
+
+    rebuildNameSelect("");
+    // 클릭한 셀이 비어 있으면 디폴트로 어떤 컴포넌트도 채우지 않는다.
+    // 셀에 매핑값이 있으면 그 값을 디폴트로 선택한다.
+    if (state.originalFocusId && allById[state.originalFocusId]) {
+      const it = allById[state.originalFocusId];
+      selectProduct(it.product_name);
+      selectVersion(state.originalFocusId);
+    } else {
+      state.currentProduct = "";
+      state.currentId = "";
+      elNameSel.insertAdjacentHTML("afterbegin", '<option value="" selected>-- 컴포넌트 선택 --</option>');
+      elNameSel.value = "";
+      elVerSel.innerHTML = "";
+      refreshTypeVendor("");
+    }
+
+    renderMapped();
+    modal.style.display = "flex";
+    setTimeout(() => elSearch.focus(), 0);
+  }
+
+  function closeModal() { modal.style.display = "none"; }
+
+  document.querySelector("#grid tbody").addEventListener("click", (e) => {
+    const cell = e.target.closest("td.cell-component-map");
+    if (!cell) return;
+    openForCell(cell);
+  });
+
+  elSearch.addEventListener("input", () => {
+    const matches = rebuildNameSelect(elSearch.value);
+    if (!matches.length) {
+      setMsg("일치하는 컴포넌트가 없습니다 (alias 포함)", "err");
+      elVerSel.innerHTML = "";
+      refreshTypeVendor("");
+      state.currentProduct = ""; state.currentId = "";
+      return;
+    }
+    setMsg(`${matches.length}개 제품 일치`, "ok");
+    selectProduct(matches[0]);
+  });
+
+  elNameSel.addEventListener("change", () => {
+    selectProduct(elNameSel.value);
+    clearMsg();
+  });
+  elVerSel.addEventListener("change", () => {
+    selectVersion(elVerSel.value);
+    clearMsg();
+  });
+
+  elBtnCancel.addEventListener("click", closeModal);
+  modal.addEventListener("click", (e) => { if (e.target === modal) closeModal(); });
+  document.addEventListener("keydown", (e) => {
+    if (modal.style.display === "none") return;
+    if (e.key === "Escape") closeModal();
+  });
+
+  elBtnAdd.addEventListener("click", () => {
+    if (!state.row) { closeModal(); return; }
+    const id = state.currentId;
+    if (!id) { setMsg("선택된 컴포넌트가 없습니다", "err"); return; }
+    if (state.workingIds.includes(id)) {
+      setMsg("이미 매핑된 컴포넌트입니다", "warn");
+      return;
+    }
+    state.workingIds.push(id);
+    writeRowIds(state.row, state.workingIds);
+    closeModal();
+  });
+
+  elBtnEdit.addEventListener("click", () => {
+    if (!state.row) { closeModal(); return; }
+    const newId = state.currentId;
+    if (!newId) { setMsg("선택된 컴포넌트가 없습니다", "err"); return; }
+    if (!state.originalFocusId) {
+      if (state.workingIds.includes(newId)) { setMsg("이미 매핑된 컴포넌트입니다", "warn"); return; }
+      state.workingIds.push(newId);
+    } else {
+      if (newId === state.originalFocusId) { closeModal(); return; }
+      const idx = state.workingIds.indexOf(state.originalFocusId);
+      if (idx >= 0) {
+        if (state.workingIds.includes(newId)) {
+          state.workingIds.splice(idx, 1);
+        } else {
+          state.workingIds[idx] = newId;
+        }
+      } else if (!state.workingIds.includes(newId)) {
+        state.workingIds.push(newId);
+      }
+    }
+    writeRowIds(state.row, state.workingIds);
+    closeModal();
+  });
+
+  elBtnDel.addEventListener("click", () => {
+    if (!state.row) { closeModal(); return; }
+    const id = state.currentId;
+    if (!id) { setMsg("선택된 컴포넌트가 없습니다", "err"); return; }
+    if (!state.workingIds.includes(id)) {
+      setMsg("매핑되어 있지 않은 컴포넌트입니다", "warn");
+      return;
+    }
+    state.workingIds = state.workingIds.filter(x => x !== id);
+    writeRowIds(state.row, state.workingIds);
+    closeModal();
+  });
+})();
 </script>
 {% endblock %}
-
-

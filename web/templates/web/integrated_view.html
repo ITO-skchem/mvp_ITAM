@@ -1,0 +1,511 @@
+{% extends "web/base.html" %}
+{% block title %}시스템 통합정보 | ITAM 포털{% endblock %}
+{% block content %}
+<link rel="stylesheet" href="https://uicdn.toast.com/grid/latest/tui-grid.css">
+<script src="https://uicdn.toast.com/grid/latest/tui-grid.js"></script>
+<style>
+  /* .list-screen 클래스를 함께 사용 → 다른 마스터와 동일한 외곽 레이아웃·h2 위치 */
+  .iv-body {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 15% 85%;
+    gap: 10px;
+    min-height: 0;
+  }
+  .iv-panel {
+    border: 1px solid #cfd5e3;
+    border-radius: 6px;
+    background: #fff;
+    padding: 10px;
+    overflow: auto;
+    min-height: 0;
+  }
+  .iv-panel-title {
+    font-size: 13px;
+    font-weight: bold;
+    color: #1f2a44;
+    margin: 0 0 8px 0;
+    padding-bottom: 6px;
+    border-bottom: 1px solid #e5e9f2;
+  }
+  .iv-right {
+    display: grid;
+    grid-template-rows: auto 1fr;
+    gap: 10px;
+    min-height: 0;
+  }
+  .iv-tree { font-size: 13px; }
+  .iv-group { margin-bottom: 8px; }
+  .iv-group-header {
+    cursor: pointer;
+    user-select: none;
+    background: #eef3ff;
+    border: 1px solid #cfd8ef;
+    padding: 4px 8px;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: #22304f;
+    font-weight: bold;
+  }
+  .iv-group-header .toggle { width: 0.8rem; display: inline-block; text-align: center; }
+  .iv-group-fields { padding: 6px 4px 0 22px; }
+  .iv-field {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 0;
+    line-height: 1.4;
+  }
+  .iv-field input[type="checkbox"] { margin: 0; }
+  .iv-field .iv-type-tag {
+    font-size: 11px;
+    color: #6c7a96;
+    margin-left: 4px;
+  }
+  .iv-conditions table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .iv-conditions th, .iv-conditions td { padding: 4px 6px; border-bottom: 1px solid #eef0f5; vertical-align: middle; }
+  .iv-conditions th { text-align: left; color: #555; background: #f9fafd; }
+  .iv-conditions select, .iv-conditions input { padding: 4px 6px; font-size: 12px; box-sizing: border-box; }
+  .iv-conditions select { width: 100%; }
+  .iv-conditions input { width: 100%; }
+  .iv-conditions .iv-cond-value-row { display: flex; gap: 4px; }
+  .iv-conditions .iv-cond-value-row input { flex: 1; }
+  .iv-cond-actions { display: flex; gap: 6px; margin-top: 6px; }
+  .iv-cond-actions button { font-size: 12px; padding: 4px 10px; cursor: pointer; }
+  .iv-toolbar { display: flex; gap: 6px; align-items: center; margin-bottom: 8px; }
+  .iv-toolbar button { padding: 6px 12px; font-size: 13px; cursor: pointer; border: 1px solid #999; background: #efefef; border-radius: 4px; }
+  .iv-toolbar button:hover { background: #e5e5e5; }
+  .iv-toolbar .iv-summary { color: #555; font-size: 12px; }
+  .iv-toolbar .iv-toolbar-spacer { flex: 1; }
+  .iv-grid-wrap { flex: 1; min-height: 0; }
+  #iv-grid-host { width: 100%; height: 100%; }
+  .iv-alert {
+    margin-bottom: 8px;
+    padding: 8px 12px;
+    border-radius: 4px;
+    font-size: 13px;
+    display: none;
+  }
+  .iv-alert.show { display: block; }
+  .iv-alert.error { background: #fce8e6; border: 1px solid #d97a73; color: #882f29; }
+  .iv-alert.info { background: #e8f0fe; border: 1px solid #8aa6e0; color: #1c3a8a; }
+  .iv-empty { padding: 12px; color: #888; font-size: 13px; }
+</style>
+
+<div class="list-screen iv-screen">
+  <h2>시스템 통합정보</h2>
+  <div class="iv-alert" id="iv-alert"></div>
+  <div class="iv-body">
+    <aside class="iv-panel iv-tree-panel">
+      <p class="iv-panel-title">조회 항목 선택 (좌측 첫 그룹이 기준)</p>
+      <div class="iv-tree" id="iv-tree"></div>
+    </aside>
+    <section class="iv-right">
+      <div class="iv-panel iv-conditions">
+        <p class="iv-panel-title">조회 조건</p>
+        <table>
+          <thead><tr><th style="width:35%;">항목</th><th style="width:18%;">연산자</th><th>값</th><th style="width:48px;"></th></tr></thead>
+          <tbody id="iv-cond-body"></tbody>
+        </table>
+        <div class="iv-cond-actions">
+          <button type="button" id="iv-cond-add">+ 조건 추가</button>
+        </div>
+      </div>
+      <div class="iv-panel" style="display:flex; flex-direction:column;">
+        <div class="iv-toolbar">
+          <span class="iv-summary" id="iv-summary"></span>
+          <span class="iv-toolbar-spacer"></span>
+          <button type="button" id="iv-search-btn">검색</button>
+          <button type="button" id="iv-reset-btn">초기화</button>
+          {% if can_export %}<button type="button" id="iv-export-btn">엑셀 다운로드</button>{% endif %}
+        </div>
+        <div class="iv-grid-wrap" id="iv-grid-wrap">
+          <div id="iv-grid-host"></div>
+          <div class="iv-empty" id="iv-empty" style="display:none;">조회 결과가 없습니다</div>
+        </div>
+      </div>
+    </section>
+  </div>
+</div>
+
+<script id="iv-meta-data" type="application/json">{{ view_field_meta|safe }}</script>
+<script>
+(() => {
+  const META = JSON.parse(document.getElementById("iv-meta-data").textContent || "{}");
+  const groups = META.groups || [];
+  const operatorsByType = META.operators_by_data_type || {};
+  const fieldIndex = {};
+  groups.forEach(g => g.fields.forEach(f => { fieldIndex[f.field_id] = { ...f, group: g.key, group_label: g.label }; }));
+
+  const SEARCH_URL = "{% url 'web:integrated_view_search' %}";
+  const EXPORT_URL = "{% url 'web:integrated_view_export' %}";
+  const csrftoken = (document.cookie.match(/csrftoken=([^;]+)/) || [])[1] || "";
+
+  const $tree = document.getElementById("iv-tree");
+  const $condBody = document.getElementById("iv-cond-body");
+  const $alert = document.getElementById("iv-alert");
+  const $summary = document.getElementById("iv-summary");
+  const $empty = document.getElementById("iv-empty");
+  const $gridHost = document.getElementById("iv-grid-host");
+
+  let grid = null;
+  let lastResult = null;
+  let currentPage = 1;
+
+  // ── 상태 보존 (sessionStorage: 동일 탭 내 화면 이동 시 복원) ──
+  const STATE_KEY = "iv:state:v1";
+  function saveState() {
+    try {
+      const state = {
+        selectedFields: getSelectedFieldIds(),
+        conditions: collectAllConditions(),
+        lastResult: lastResult,
+      };
+      sessionStorage.setItem(STATE_KEY, JSON.stringify(state));
+    } catch (e) { /* quota or unavailable */ }
+  }
+  function loadState() {
+    try {
+      const raw = sessionStorage.getItem(STATE_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch (e) { return null; }
+  }
+  function clearState() {
+    try { sessionStorage.removeItem(STATE_KEY); } catch (e) {}
+  }
+
+  function showAlert(text, level) {
+    $alert.className = "iv-alert show " + (level || "info");
+    $alert.textContent = text || "";
+  }
+  function clearAlert() { $alert.className = "iv-alert"; $alert.textContent = ""; }
+
+  // ── 좌측 트리 렌더 ────────────────────────────────────────────
+  function renderTree() {
+    $tree.innerHTML = "";
+    groups.forEach(g => {
+      const wrap = document.createElement("div");
+      wrap.className = "iv-group";
+      const header = document.createElement("div");
+      header.className = "iv-group-header";
+      header.innerHTML = `<span class="toggle">▼</span><label style="display:flex;align-items:center;gap:6px;cursor:pointer;flex:1;"><input type="checkbox" data-role="group-all" data-group="${g.key}"> <span>${escapeHtml(g.label)}</span></label>`;
+      const body = document.createElement("div");
+      body.className = "iv-group-fields";
+      g.fields.forEach(f => {
+        const row = document.createElement("div");
+        row.className = "iv-field";
+        row.innerHTML = `<label style="display:flex;align-items:center;gap:6px;cursor:pointer;width:100%;"><input type="checkbox" data-role="field" data-field-id="${f.field_id}" data-data-type="${f.data_type}"><span>${escapeHtml(f.label)}</span><span class="iv-type-tag">[${f.data_type}]</span></label>`;
+        body.appendChild(row);
+      });
+      header.querySelector(".toggle").addEventListener("click", (e) => {
+        e.stopPropagation();
+        const t = header.querySelector(".toggle");
+        if (body.style.display === "none") { body.style.display = ""; t.textContent = "▼"; }
+        else { body.style.display = "none"; t.textContent = "▶"; }
+      });
+      wrap.appendChild(header);
+      wrap.appendChild(body);
+      $tree.appendChild(wrap);
+    });
+    $tree.addEventListener("change", (e) => {
+      const t = e.target;
+      if (t && t.dataset.role === "group-all") {
+        const group = t.dataset.group;
+        $tree.querySelectorAll(`input[data-role="field"]`).forEach(inp => {
+          const f = fieldIndex[inp.dataset.fieldId];
+          if (f && f.group === group) inp.checked = t.checked;
+        });
+        refreshConditionFieldOptions();
+        saveState();
+      } else if (t && t.dataset.role === "field") {
+        refreshConditionFieldOptions();
+        saveState();
+      }
+    });
+  }
+
+  function getSelectedFieldIds() {
+    return Array.from($tree.querySelectorAll('input[data-role="field"]:checked'))
+      .map(inp => inp.dataset.fieldId);
+  }
+
+  // ── 조건 행 ──────────────────────────────────────────────────
+  function makeOptionsHtml(values, selected) {
+    return values.map(v => `<option value="${escapeHtml(v)}"${v === selected ? " selected" : ""}>${escapeHtml(v)}</option>`).join("");
+  }
+
+  function buildFieldOptions(selected) {
+    const fids = getSelectedFieldIds();
+    if (!fids.length) return `<option value="">(좌측에서 항목을 선택하세요)</option>`;
+    return fids.map(fid => {
+      const f = fieldIndex[fid];
+      if (!f) return "";
+      const label = `[${f.group_label}] ${f.label}`;
+      return `<option value="${escapeHtml(fid)}"${fid === selected ? " selected" : ""}>${escapeHtml(label)}</option>`;
+    }).join("");
+  }
+
+  function valueInputHtml(operator, dataType) {
+    if (operator === "between") {
+      const t = (dataType === "date") ? "date" : (dataType === "number" ? "number" : "text");
+      return `<div class="iv-cond-value-row"><input data-role="value" type="${t}" placeholder="시작"><input data-role="value2" type="${t}" placeholder="끝"></div>`;
+    }
+    if (dataType === "date") return `<input data-role="value" type="date">`;
+    if (dataType === "number") return `<input data-role="value" type="number" step="any">`;
+    if (dataType === "bool") return `<select data-role="value"><option value="Y">Y</option><option value="N">N</option></select>`;
+    return `<input data-role="value" type="text" placeholder="${operator === 'in' ? '쉼표로 구분 (예: A,B,C)' : ''}">`;
+  }
+
+  function addConditionRow(prefill) {
+    const tr = document.createElement("tr");
+    const fid = (prefill && prefill.field_id) || getSelectedFieldIds()[0] || "";
+    const f = fid ? fieldIndex[fid] : null;
+    const ops = (f && operatorsByType[f.data_type]) || ["contains"];
+    const op = (prefill && prefill.operator) || ops[0];
+    tr.innerHTML = `
+      <td><select data-role="field-select">${buildFieldOptions(fid)}</select></td>
+      <td><select data-role="op-select">${makeOptionsHtml(ops, op)}</select></td>
+      <td data-role="value-cell">${valueInputHtml(op, f ? f.data_type : "string")}</td>
+      <td><button type="button" data-role="del" title="삭제">&times;</button></td>`;
+    if (prefill && prefill.value !== undefined) {
+      const v1 = tr.querySelector('[data-role="value"]');
+      if (v1) v1.value = Array.isArray(prefill.value) ? (prefill.value[0] ?? "") : prefill.value;
+      const v2 = tr.querySelector('[data-role="value2"]');
+      if (v2 && Array.isArray(prefill.value)) v2.value = prefill.value[1] ?? "";
+    }
+    tr.querySelector('[data-role="field-select"]').addEventListener("change", (e) => {
+      const newFid = e.target.value;
+      const nf = fieldIndex[newFid];
+      const nops = (nf && operatorsByType[nf.data_type]) || ["contains"];
+      const opSel = tr.querySelector('[data-role="op-select"]');
+      opSel.innerHTML = makeOptionsHtml(nops, nops[0]);
+      tr.querySelector('[data-role="value-cell"]').innerHTML = valueInputHtml(nops[0], nf ? nf.data_type : "string");
+      saveState();
+    });
+    tr.querySelector('[data-role="op-select"]').addEventListener("change", (e) => {
+      const newFid = tr.querySelector('[data-role="field-select"]').value;
+      const nf = fieldIndex[newFid];
+      tr.querySelector('[data-role="value-cell"]').innerHTML = valueInputHtml(e.target.value, nf ? nf.data_type : "string");
+      saveState();
+    });
+    tr.querySelector('[data-role="del"]').addEventListener("click", () => { tr.remove(); saveState(); });
+    tr.addEventListener("input", saveState);
+    $condBody.appendChild(tr);
+  }
+
+  function refreshConditionFieldOptions() {
+    const fids = getSelectedFieldIds();
+    Array.from($condBody.querySelectorAll('[data-role="field-select"]')).forEach(sel => {
+      const cur = sel.value;
+      const nextValue = fids.includes(cur) ? cur : (fids[0] || "");
+      sel.innerHTML = buildFieldOptions(nextValue);
+      if (cur !== nextValue) {
+        const ev = new Event("change");
+        sel.dispatchEvent(ev);
+      }
+    });
+  }
+
+  function _readRowCondition(tr, opts) {
+    const fid = tr.querySelector('[data-role="field-select"]').value;
+    const op = tr.querySelector('[data-role="op-select"]').value;
+    const v1El = tr.querySelector('[data-role="value"]');
+    const v2El = tr.querySelector('[data-role="value2"]');
+    let value;
+    if (op === "between" && v2El) value = [v1El ? v1El.value : "", v2El.value];
+    else value = v1El ? v1El.value : "";
+    if (!opts || !opts.skipEmptyCheck) {
+      if (!fid) return null;
+      if (value === "" || (Array.isArray(value) && value.every(x => x === ""))) return null;
+    }
+    return { field_id: fid, operator: op, value };
+  }
+
+  function collectConditions() {
+    const out = [];
+    Array.from($condBody.children).forEach(tr => {
+      const cond = _readRowCondition(tr, { skipEmptyCheck: false });
+      if (cond) out.push(cond);
+    });
+    return out;
+  }
+
+  function collectAllConditions() {
+    const out = [];
+    Array.from($condBody.children).forEach(tr => {
+      out.push(_readRowCondition(tr, { skipEmptyCheck: true }));
+    });
+    return out;
+  }
+
+  // ── 검색/그리드 ──────────────────────────────────────────────
+  async function postJson(url, body) {
+    const res = await fetch(url, {
+      method: "POST",
+      credentials: "same-origin",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Requested-With": "XMLHttpRequest",
+        "X-CSRFToken": csrftoken,
+      },
+      body: JSON.stringify(body || {}),
+    });
+    if ((res.headers.get("content-type") || "").includes("application/json")) {
+      const data = await res.json();
+      if (!res.ok || data.ok === false) throw new Error(data.error || `요청 실패 (${res.status})`);
+      return data;
+    }
+    if (!res.ok) throw new Error(`요청 실패 (${res.status})`);
+    return res;
+  }
+
+  function buildGrid(columns) {
+    if (grid) { try { grid.destroy(); } catch (e) {} grid = null; }
+    $gridHost.innerHTML = "";
+    grid = new tui.Grid({
+      el: $gridHost,
+      data: [],
+      bodyHeight: "fitToParent",
+      columnOptions: { resizable: true },
+      scrollX: true,
+      scrollY: true,
+      columns: columns.map(c => ({ name: c.field_id, header: c.label, width: 128, minWidth: 64 })),
+    });
+  }
+
+  async function runSearch(page) {
+    clearAlert();
+    const fids = getSelectedFieldIds();
+    if (!fids.length) {
+      showAlert("좌측에서 조회 항목을 1개 이상 선택하세요.", "error");
+      return;
+    }
+    currentPage = page || 1;
+    try {
+      const data = await postJson(SEARCH_URL, {
+        selected_fields: fids,
+        conditions: collectConditions(),
+        page: currentPage,
+        page_size: 100,
+      });
+      lastResult = data.result;
+      renderResult(lastResult);
+      saveState();
+    } catch (e) {
+      showAlert(e.message || String(e), "error");
+    }
+  }
+
+  function renderResult(result) {
+    if (!result.rows || !result.rows.length) {
+      if (grid) { try { grid.resetData([]); } catch (e) {} }
+      $empty.style.display = "";
+      $gridHost.style.display = "none";
+      $summary.textContent = `조회 결과가 없습니다 (기준: ${baseLabel(result.base_group)})`;
+      return;
+    }
+    $empty.style.display = "none";
+    $gridHost.style.display = "";
+    buildGrid(result.columns);
+    grid.resetData(result.rows);
+    $summary.textContent = `총 ${result.total}건 · 페이지 ${result.page}/${result.page_count} · 기준: ${baseLabel(result.base_group)}`;
+  }
+
+  function baseLabel(key) {
+    const g = groups.find(g => g.key === key);
+    return g ? g.label : key;
+  }
+
+  // ── 엑셀 ───────────────────────────────────────────────────
+  async function runExport() {
+    const fids = getSelectedFieldIds();
+    if (!fids.length) {
+      showAlert("좌측에서 조회 항목을 1개 이상 선택하세요.", "error");
+      return;
+    }
+    const body = { selected_fields: fids, conditions: collectConditions() };
+    const res = await fetch(EXPORT_URL, {
+      method: "POST",
+      credentials: "same-origin",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Requested-With": "XMLHttpRequest",
+        "X-CSRFToken": csrftoken,
+      },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      try {
+        const data = await res.json();
+        showAlert(data.error || `다운로드 실패 (${res.status})`, "error");
+      } catch (e) {
+        showAlert(`다운로드 실패 (${res.status})`, "error");
+      }
+      return;
+    }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "integrated_view.xlsx";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  function escapeHtml(s) { return String(s ?? "").replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c])); }
+
+  function resetConditionsAndResearch() {
+    $condBody.innerHTML = "";
+    clearAlert();
+    saveState();
+    if (getSelectedFieldIds().length) {
+      runSearch(1);
+    } else {
+      if (grid) { try { grid.resetData([]); } catch (e) {} }
+      $empty.style.display = "none";
+      $gridHost.style.display = "";
+      $summary.textContent = "";
+      lastResult = null;
+      saveState();
+    }
+  }
+
+  function restoreState() {
+    const state = loadState();
+    if (!state) return;
+    if (Array.isArray(state.selectedFields)) {
+      const wanted = new Set(state.selectedFields);
+      $tree.querySelectorAll('input[data-role="field"]').forEach(inp => {
+        if (wanted.has(inp.dataset.fieldId) && fieldIndex[inp.dataset.fieldId]) {
+          inp.checked = true;
+        }
+      });
+    }
+    if (Array.isArray(state.conditions)) {
+      state.conditions.forEach(c => {
+        if (!c) return;
+        if (c.field_id && !fieldIndex[c.field_id]) return;
+        addConditionRow(c);
+      });
+    }
+    if (state.lastResult && Array.isArray(state.lastResult.columns) && Array.isArray(state.lastResult.rows)) {
+      lastResult = state.lastResult;
+      renderResult(lastResult);
+    }
+  }
+
+  // ── 초기화 ───────────────────────────────────────────────────
+  renderTree();
+  document.getElementById("iv-cond-add").addEventListener("click", () => { addConditionRow(); saveState(); });
+  document.getElementById("iv-search-btn").addEventListener("click", () => runSearch(1));
+  document.getElementById("iv-reset-btn").addEventListener("click", resetConditionsAndResearch);
+  const expBtn = document.getElementById("iv-export-btn");
+  if (expBtn) expBtn.addEventListener("click", runExport);
+  restoreState();
+})();
+</script>
+{% endblock %}
