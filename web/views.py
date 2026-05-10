@@ -9,7 +9,7 @@ from openpyxl.utils import get_column_letter
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required, permission_required
 from django.core.paginator import Paginator
-from django.db import IntegrityError
+from django.db import IntegrityError, transaction
 from django.db.models import Prefetch, Q
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -22,6 +22,7 @@ from masters.models import (
     ConfigurationMaster,
     PersonMaster,
     ServiceAttribute,
+    ServiceConfigurationMapping,
     ServiceMaster,
 )
 from masters.service_person_grid import SERVICE_PERSON_GRID_COLUMNS, attribute_codes_for_grid
@@ -94,7 +95,9 @@ CONFIG_SEARCH_FIELD_ALIASES = {
     "인프라구분": "infra_type_code",
     "위치": "location_code",
     "네트워크": "network_zone_code",
+    "연결서비스": "__connected_service__",
 }
+CONFIG_CONNECTED_SERVICE_KEY = "__connected_service__"
 CONFIG_CODE_FIELD_MAP = {
     "server_type_code": ("config_type", "server_type_code"),
     "operation_dev_code": ("operation_type", "operation_dev_code"),
@@ -127,6 +130,17 @@ def split_csv_tokens(raw):
 
 def join_csv_tokens(values):
     return ", ".join(v for v in values if str(v or "").strip())
+
+
+def sync_service_configuration_mappings(configuration: ConfigurationMaster, connected_service_raw: str) -> None:
+    """구성에 대한 서비스-구성 매핑을 입력값(쉼표 구분 서비스명)에 맞게 교체한다."""
+    ServiceConfigurationMapping.objects.filter(configuration=configuration).delete()
+    seen = set()
+    for token in split_csv_tokens(connected_service_raw):
+        svc = ServiceMaster.objects.filter(name=token).first()
+        if svc and svc.pk not in seen:
+            seen.add(svc.pk)
+            ServiceConfigurationMapping.objects.create(service=svc, configuration=configuration)
 
 
 def parse_person_ids_from_attr_value(raw):
@@ -463,6 +477,8 @@ def code_choice_options(group_key):
 
 # 담당자 역할 코드 개명 이전 코드값 → 현재 코드값 (엑셀 재업로드 등)
 LEGACY_PERSON_ROLE_CODES = {"APPL_OPS": "OPERATOR", "INFRA_OPS": "INFRA_OPERATOR"}
+# 컴포넌트 유형 코드 재정리 이전 값 → 현재 코드값
+LEGACY_COMPONENT_TYPE_CODES = {"APP": "기타", "MIDDLEWARE": "middleware", "OS": "OS", "DB": "DB"}
 LEGACY_SERVICE_STATUS_CODES = {"ACTIVE": "운영중", "active": "운영중", "PAUSED": "대기", "paused": "대기", "END": "종료", "end": "종료"}
 LEGACY_BUILD_TYPE_CODES = {"NEW": "SI개발", "RENEWAL": "SI개발", "MAINT": "솔루션"}
 LEGACY_PERSON_STATUS_CODES = {"ACTIVE": "투입", "LEAVE": "대기", "END": "종료", "재직": "투입", "휴직": "대기"}
@@ -483,6 +499,8 @@ def code_from_value(group_key, value):
         v = LEGACY_PERSON_STATUS_CODES[v]
     if group_key == "yn_flag" and v in LEGACY_YN_FLAG_CODES:
         v = LEGACY_YN_FLAG_CODES[v]
+    if group_key == "component_type" and v in LEGACY_COMPONENT_TYPE_CODES:
+        v = LEGACY_COMPONENT_TYPE_CODES[v]
     return Code.objects.filter(group__key=group_key, code=v, group__is_active=True, is_active=True).first()
 
 
@@ -957,15 +975,26 @@ def person_master_list(request):
 def configuration_master_list(request):
     query = request.GET.get("q", "").strip()
     page = request.GET.get("page", "").strip()
-    qs = ConfigurationMaster.objects.select_related(
-        "server_type_code", "operation_dev_code", "infra_type_code", "location_code", "network_zone_code"
-    ).order_by("asset_mgmt_no")
+    qs = (
+        ConfigurationMaster.objects.select_related(
+            "server_type_code", "operation_dev_code", "infra_type_code", "location_code", "network_zone_code"
+        )
+        .prefetch_related(
+            Prefetch(
+                "service_configuration_mappings",
+                queryset=ServiceConfigurationMapping.objects.select_related("service"),
+            )
+        )
+        .order_by("asset_mgmt_no")
+    )
     if query:
         terms, free_text = parse_structured_terms(query)
         if terms:
             for key, value in terms:
                 field_key = CONFIG_SEARCH_FIELD_ALIASES.get(key)
-                if field_key in CONFIG_CODE_FIELD_MAP:
+                if field_key == CONFIG_CONNECTED_SERVICE_KEY:
+                    qs = qs.filter(service_configuration_mappings__service__name__icontains=value)
+                elif field_key in CONFIG_CODE_FIELD_MAP:
                     term_q = q_for_code_fields_keyword(value, {field_key: CONFIG_CODE_FIELD_MAP[field_key]})
                     qs = qs.filter(term_q if term_q else Q(pk__in=[]))
                 elif field_key in {"hostname", "ip", "url"}:
@@ -973,16 +1002,22 @@ def configuration_master_list(request):
             if free_text:
                 free_q = build_model_text_search_q(ConfigurationMaster, free_text)
                 free_q |= q_for_code_fields_keyword(free_text, CONFIG_CODE_FIELD_MAP)
+                free_q |= Q(service_configuration_mappings__service__name__icontains=free_text)
                 qs = qs.filter(free_q)
             qs = qs.distinct()
         else:
-            qs = qs.filter(build_model_text_search_q(ConfigurationMaster, query) | q_for_code_fields_keyword(query, CONFIG_CODE_FIELD_MAP)).distinct()
+            qs = qs.filter(
+                build_model_text_search_q(ConfigurationMaster, query)
+                | q_for_code_fields_keyword(query, CONFIG_CODE_FIELD_MAP)
+                | Q(service_configuration_mappings__service__name__icontains=query)
+            ).distinct()
 
     if request.GET.get("export") == "1":
         rows = [
             {
                 "구성ID": c.asset_mgmt_no,
                 "구성명": c.hostname,
+                "연결서비스": c.connected_services_label,
                 "구성유형": getattr(c.server_type_code, "code", ""),
                 "운영/개발": getattr(c.operation_dev_code, "code", ""),
                 "인프라구분": getattr(c.infra_type_code, "code", ""),
@@ -1026,8 +1061,10 @@ def configuration_master_list(request):
                         setattr(obj, k, v)
                     obj.updated_by = actor
                     obj.save()
+                    sync_service_configuration_mappings(obj, str(rec.get("연결서비스", "")))
                 elif payload["hostname"]:
-                    ConfigurationMaster.objects.create(**payload, created_by=actor, updated_by=actor)
+                    obj = ConfigurationMaster.objects.create(**payload, created_by=actor, updated_by=actor)
+                    sync_service_configuration_mappings(obj, str(rec.get("연결서비스", "")))
             messages.success(request, "구성정보 마스터 엑셀 업로드 완료")
         return redirect(build_list_redirect(request.path, query=query, page=page))
 
@@ -1035,33 +1072,40 @@ def configuration_master_list(request):
         rows = json.loads(request.POST.get("rows_json", "[]"))
         deleted_ids = json.loads(request.POST.get("deleted_ids_json", "[]"))
         actor = audit_actor_label(request)
-        ConfigurationMaster.objects.filter(pk__in=deleted_ids).delete()
-        for row in rows:
-            pk = str(row.get("id", "")).strip()
-            payload = {
-                "hostname": (row.get("hostname") or "").strip(),
-                "server_type_code": code_from_value("config_type", row.get("server_type_code")),
-                "operation_dev_code": code_from_value("operation_type", row.get("operation_dev_code")),
-                "infra_type_code": code_from_value("infra_type", row.get("infra_type_code")),
-                "location_code": code_from_value("infra_location", row.get("location_code")),
-                "network_zone_code": code_from_value("network_zone", row.get("network_zone_code")),
-                "ip": (row.get("ip") or "").strip() or None,
-                "port": (row.get("port") or "").strip(),
-                "url": (row.get("url") or "").strip(),
-            }
-            if pk:
-                obj = ConfigurationMaster.objects.get(pk=pk)
-                for k, v in payload.items():
-                    setattr(obj, k, v)
-                obj.updated_by = actor
-                obj.save()
-            elif payload["hostname"]:
-                ConfigurationMaster.objects.create(**payload, created_by=actor, updated_by=actor)
+        with transaction.atomic():
+            ConfigurationMaster.objects.filter(pk__in=deleted_ids).delete()
+            for row in rows:
+                pk = str(row.get("id", "")).strip()
+                connected_raw = row.get("connected_service") or ""
+                payload = {
+                    "hostname": (row.get("hostname") or "").strip(),
+                    "server_type_code": code_from_value("config_type", row.get("server_type_code")),
+                    "operation_dev_code": code_from_value("operation_type", row.get("operation_dev_code")),
+                    "infra_type_code": code_from_value("infra_type", row.get("infra_type_code")),
+                    "location_code": code_from_value("infra_location", row.get("location_code")),
+                    "network_zone_code": code_from_value("network_zone", row.get("network_zone_code")),
+                    "ip": (row.get("ip") or "").strip() or None,
+                    "port": (row.get("port") or "").strip(),
+                    "url": (row.get("url") or "").strip(),
+                }
+                if pk:
+                    obj = ConfigurationMaster.objects.get(pk=pk)
+                    for k, v in payload.items():
+                        setattr(obj, k, v)
+                    obj.updated_by = actor
+                    obj.save()
+                    sync_service_configuration_mappings(obj, connected_raw)
+                elif payload["hostname"]:
+                    obj = ConfigurationMaster.objects.create(**payload, created_by=actor, updated_by=actor)
+                    sync_service_configuration_mappings(obj, connected_raw)
         messages.success(request, "구성정보 마스터 저장 완료")
         return redirect(build_list_redirect(request.path, query=query, page=page))
 
     paginator = Paginator(qs, 100)
     page_obj = paginator.get_page(request.GET.get("page"))
+    service_name_options = sorted(
+        {n for n in ServiceMaster.objects.values_list("name", flat=True) if (n or "").strip()}
+    )
     return render(
         request,
         "web/configuration_master_list.html",
@@ -1074,6 +1118,7 @@ def configuration_master_list(request):
             "infra_type_codes": code_values("infra_type"),
             "infra_location_codes": code_values("infra_location"),
             "network_zone_codes": code_values("network_zone"),
+            "service_name_options": service_name_options,
         },
     )
 
@@ -1190,7 +1235,7 @@ def component_master_list(request):
             "items": page_obj.object_list,
             "page_obj": page_obj,
             "q": query,
-            "component_type_codes": code_values("component_type"),
+            "component_type_options": code_choice_options("component_type"),
             "support_status_codes": code_values("support_status"),
         },
     )

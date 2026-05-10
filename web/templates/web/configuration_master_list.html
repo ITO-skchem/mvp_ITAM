@@ -1,18 +1,19 @@
 {% extends "web/base.html" %}
 {% block title %}&#44396;&#49457;&#51221;&#48372; &#47560;&#49828;&#53552; | ITAM &#54252;&#53552;{% endblock %}
 {% block content %}
-<div class="list-screen"><h2>&#44396;&#49457;&#51221;&#48372; &#47560;&#49828;&#53552;</h2>
+<div class="list-screen service-master-screen"><h2>&#44396;&#49457;&#51221;&#48372; &#47560;&#49828;&#53552;</h2>
 <form class="search-box" method="get"><input class="search-input" name="q" value="{{ q }}" placeholder="예) 구성명:WEB 운영/개발:운영"><button type="submit">&#44160;&#49353;</button><span class="spacer"></span><button type="button" id="save-btn">&#51200;&#51109;</button><button type="button" id="add-btn">&#52628;&#44032;</button><button type="button" id="del-btn">&#49325;&#51228;</button></form>
 <datalist id="type-list">{% for v in config_type_codes %}<option value="{{ v }}"></option>{% endfor %}</datalist>
 <datalist id="op-list">{% for v in operation_type_codes %}<option value="{{ v }}"></option>{% endfor %}</datalist>
 <datalist id="infra-list">{% for v in infra_type_codes %}<option value="{{ v }}"></option>{% endfor %}</datalist>
 <datalist id="loc-list">{% for v in infra_location_codes %}<option value="{{ v }}"></option>{% endfor %}</datalist>
 <datalist id="net-list">{% for v in network_zone_codes %}<option value="{{ v }}"></option>{% endfor %}</datalist>
+<datalist id="svc-name-list">{% for v in service_name_options %}<option value="{{ v|escape }}"></option>{% endfor %}</datalist>
 <form id="grid-form" method="post">{% csrf_token %}<input type="hidden" name="action" value="save"><input type="hidden" name="rows_json" id="rows-json"><input type="hidden" name="deleted_ids_json" id="deleted-json">
-<div class="wrap"><table id="grid"><thead><tr><th><input type="checkbox" id="all"></th><th>ID</th><th>&#44396;&#49457;&#47749;</th><th>&#44396;&#49457;&#50976;&#54805;</th><th>&#50868;&#50689;/&#44060;&#48156;</th><th>&#51064;&#54532;&#46972;&#44396;&#48516;</th><th>&#50948;&#52824;</th><th>&#45348;&#53944;&#50892;&#53356;</th><th>IP</th><th>Port</th><th>URL</th></tr></thead><tbody>
+<div class="wrap"><table id="grid"><thead><tr><th><input type="checkbox" id="all"></th><th>ID</th><th>&#44396;&#49457;&#47749;</th><th>&#50672;&#44208;&#49436;&#48708;&#49828;</th><th>&#44396;&#49457;&#50976;&#54805;</th><th>&#50868;&#50689;/&#44060;&#48156;</th><th>&#51064;&#54532;&#46972;&#44396;&#48516;</th><th>&#50948;&#52824;</th><th>&#45348;&#53944;&#50892;&#53356;</th><th>IP</th><th>Port</th><th>URL</th></tr></thead><tbody>
 {% for c in items %}<tr><td><input type="checkbox" class="row-check"></td>
 <td><input type="hidden" data-field="id" value="{{ c.id }}"><input type="hidden" data-field="asset_mgmt_no" value="{{ c.asset_mgmt_no }}"><span>{{ c.asset_mgmt_no }}</span></td>
-<td><input data-field="hostname" value="{{ c.hostname }}"></td><td><input data-field="server_type_code" list="type-list" value="{{ c.server_type_code.code|default:'' }}"></td>
+<td><input data-field="hostname" value="{{ c.hostname }}"></td><td><input data-field="connected_service" list="svc-name-list" value="{{ c.connected_services_label }}"></td><td><input data-field="server_type_code" list="type-list" value="{{ c.server_type_code.code|default:'' }}"></td>
 <td><input data-field="operation_dev_code" list="op-list" value="{{ c.operation_dev_code.code|default:'' }}"></td><td><input data-field="infra_type_code" list="infra-list" value="{{ c.infra_type_code.code|default:'' }}"></td>
 <td><input data-field="location_code" list="loc-list" value="{{ c.location_code.code|default:'' }}"></td><td><input data-field="network_zone_code" list="net-list" value="{{ c.network_zone_code.code|default:'' }}"></td>
 <td><input data-field="ip" value="{{ c.ip }}"></td><td><input data-field="port" value="{{ c.port }}"></td><td><input data-field="url" value="{{ c.url }}"></td></tr>{% endfor %}

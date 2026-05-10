@@ -82,7 +82,7 @@ class Command(BaseCommand):
         )
 
         comp = Component.objects.create(
-            component_type_code=c("component_type", "APP"),
+            component_type_code=c("component_type", "library"),
             product_name="Django",
             version="5.2",
             vendor_name="Django Software Foundation",

@@ -137,6 +137,11 @@
             box-sizing: border-box;
             vertical-align: middle;
         }
+        /* 마스터 그리드: 전체 width:100% 테이블을 쓰지 않고 열 너비를 입력·헤더 내용에 맞춤 (서비스 마스터와 동일) */
+        .list-screen .wrap table#grid {
+            width: max-content;
+            max-width: 100%;
+        }
         /*
          마스터 그리드(#grid): 텍스트·코드(list)·날짜 입력 칸 높이·너비 통일 (글로벌 text 너비와 무관)
          */

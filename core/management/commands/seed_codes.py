@@ -1,7 +1,28 @@
 from django.core.management.base import BaseCommand
 
 from core.models import Code, CodeGroup
+from masters.models import Component
 from masters.service_person_grid import ensure_service_person_attribute_codes
+
+
+# 이전 component_type 코드 → 새 코드 (seed 후 비활성화되기 전에 FK를 옮김)
+LEGACY_COMPONENT_TYPE_CODE_MAP = {
+    "APP": "기타",
+    "MIDDLEWARE": "middleware",
+    "OS": "OS",
+    "DB": "DB",
+}
+
+
+def migrate_component_type_foreign_keys():
+    """컴포넌트 유형 코드 체계 변경 시 기존 Component FK를 새 Code 행으로 이전한다."""
+    for old_code, new_code in LEGACY_COMPONENT_TYPE_CODE_MAP.items():
+        if old_code == new_code:
+            continue
+        old = Code.objects.filter(group__key="component_type", code=old_code).first()
+        new = Code.objects.filter(group__key="component_type", code=new_code).first()
+        if old and new and old.pk != new.pk:
+            Component.objects.filter(component_type_code=old).update(component_type_code=new)
 
 
 SEED_GROUPS = {
@@ -54,7 +75,16 @@ SEED_GROUPS = {
     "infra_type": [("ONPREM", "온프레미스"), ("AWS", "AWS"), ("AZURE", "AZURE"), ("GCP", "GCP")],
     "infra_location": [("DC1", "센터1"), ("DC2", "센터2"), ("AWS", "AWS")],
     "network_zone": [("DMZ", "DMZ"), ("INTERNAL", "내부"), ("EXTERNAL", "외부")],
-    "component_type": [("OS", "OS"), ("MIDDLEWARE", "미들웨어"), ("DB", "DB"), ("APP", "애플리케이션")],
+    "component_type": [
+        ("language", "language"),
+        ("runtime", "runtime"),
+        ("framework", "framework"),
+        ("library", "library"),
+        ("middleware", "middleware"),
+        ("OS", "OS"),
+        ("DB", "DB"),
+        ("기타", "기타"),
+    ],
     "support_status": [("SUPPORTED", "지원"), ("LIMITED", "부분지원"), ("END", "지원종료")],
     "use_flag": [("Y", "사용"), ("N", "미사용")],
 }
@@ -77,5 +107,7 @@ class Command(BaseCommand):
                     defaults={"name": name, "sort_order": ci * 10, "is_active": True, "related_code": None},
                 )
             Code.objects.filter(group=group).exclude(code__in=valid_codes).update(is_active=False)
+            if group_key == "component_type":
+                migrate_component_type_foreign_keys()
         ensure_service_person_attribute_codes()
         self.stdout.write(self.style.SUCCESS("재정리 공통 코드 시드 완료"))

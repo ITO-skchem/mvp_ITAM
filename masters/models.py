@@ -165,6 +165,16 @@ class ConfigurationMaster(AuditStampMixin):
             self.asset_mgmt_no = _next_prefixed_value(ConfigurationMaster, "asset_mgmt_no", "CFG")
         super().save(*args, **kwargs)
 
+    @property
+    def connected_services_label(self) -> str:
+        """서비스-구성 매핑에 연결된 서비스명(표시용). prefetch_related 권장."""
+        if not self.pk:
+            return ""
+        names = sorted(
+            {m.service.name for m in self.service_configuration_mappings.all() if m.service_id}
+        )
+        return ", ".join(names)
+
     def __str__(self):
         return self.hostname or self.asset_mgmt_no
 
