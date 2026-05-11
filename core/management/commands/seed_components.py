@@ -164,6 +164,20 @@ ENTRIES += [
     Entry("framework", ".NET Framework", "4.8.1", "Microsoft", _cpe("microsoft", ".net_framework", "4.8.1"), None, None),
 ]
 
+# NestJS (Node.js/TypeScript framework; NVD CPE 미보장 → cpe_name 비움)
+ENTRIES += [
+    Entry("framework", "NestJS", "8.x", "OpenJS / NestJS", "", None, None),
+    Entry("framework", "NestJS", "9.x", "OpenJS / NestJS", "", None, None),
+    Entry("framework", "NestJS", "10.x", "OpenJS / NestJS", "", None, None),
+    Entry("framework", "NestJS", "11.x", "OpenJS / NestJS", "", None, None),
+]
+
+# Express (Node.js web framework; NVD CPE 미보장 → cpe_name 비움)
+ENTRIES += [
+    Entry("framework", "Express", "4.x", "OpenJS Foundation", "", None, None),
+    Entry("framework", "Express", "5.x", "OpenJS Foundation", "", None, None),
+]
+
 # Angular (Google)
 ENTRIES += [
     Entry("framework", "Angular", "16.2", "Google", _cpe("angular", "angular", "16.2"), date(2024, 11, 8), date(2024, 11, 8)),
@@ -264,6 +278,39 @@ ENTRIES += [
     Entry("middleware", "HCL Notes", "14.0", "HCL", _cpe("hcltechsw", "hcl_notes", "14.0"), None, None),
 ]
 
+# Apache Tomcat (Java 애플리케이션 서버)
+ENTRIES += [
+    Entry("middleware", "Apache Tomcat", "7.0", "Apache", _cpe("apache", "tomcat", "7.0"), None, None),
+    Entry("middleware", "Apache Tomcat", "8.0", "Apache", _cpe("apache", "tomcat", "8.0"), None, None),
+    Entry("middleware", "Apache Tomcat", "8.5", "Apache", _cpe("apache", "tomcat", "8.5"), None, None),
+    Entry("middleware", "Apache Tomcat", "9.0", "Apache", _cpe("apache", "tomcat", "9.0"), None, None),
+    Entry("middleware", "Apache Tomcat", "10.0", "Apache", _cpe("apache", "tomcat", "10.0"), None, None),
+    Entry("middleware", "Apache Tomcat", "10.1", "Apache", _cpe("apache", "tomcat", "10.1"), None, None),
+    Entry("middleware", "Apache Tomcat", "11.0", "Apache", _cpe("apache", "tomcat", "11.0"), None, None),
+]
+
+# Apache HTTP Server
+ENTRIES += [
+    Entry("middleware", "Apache HTTP Server", "2.4", "Apache", _cpe("apache", "http_server", "2.4"), None, None),
+    Entry("middleware", "Apache HTTP Server", "2.4.57", "Apache", _cpe("apache", "http_server", "2.4.57"), None, None),
+    Entry("middleware", "Apache HTTP Server", "2.4.58", "Apache", _cpe("apache", "http_server", "2.4.58"), None, None),
+    Entry("middleware", "Apache HTTP Server", "2.4.59", "Apache", _cpe("apache", "http_server", "2.4.59"), None, None),
+    Entry("middleware", "Apache HTTP Server", "2.4.60", "Apache", _cpe("apache", "http_server", "2.4.60"), None, None),
+    Entry("middleware", "Apache HTTP Server", "2.4.61", "Apache", _cpe("apache", "http_server", "2.4.61"), None, None),
+    Entry("middleware", "Apache HTTP Server", "2.4.67", "Apache", _cpe("apache", "http_server", "2.4.67"), None, None),
+]
+
+# NGINX
+ENTRIES += [
+    Entry("middleware", "NGINX", "1.20", "F5", _cpe("f5", "nginx", "1.20"), None, None),
+    Entry("middleware", "NGINX", "1.24", "F5", _cpe("f5", "nginx", "1.24"), None, None),
+]
+
+# Microsoft IIS
+ENTRIES += [
+    Entry("middleware", "Microsoft IIS", "10.0", "Microsoft", _cpe("microsoft", "iis", "10.0"), None, None),
+]
+
 # ---------- OS ----------
 # Windows Server (Microsoft)
 ENTRIES += [
@@ -311,6 +358,11 @@ ENTRIES += [
 # SAP MaxDB (alias "MAX DB")
 ENTRIES += [
     Entry("DB", "SAP MaxDB", "7.9", "SAP", _cpe("sap", "maxdb", "7.9"), None, None),
+]
+
+# Notes DB (Domino NSF 기반 스토리지, 분석 편의를 위해 DB 유형으로 별도 노출)
+ENTRIES += [
+    Entry("DB", "Notes DB", "12.x", "HCL", "", None, None),
 ]
 
 # MongoDB
@@ -363,6 +415,8 @@ ALIASES: dict[str, list[str]] = {
     "C++": ["cpp", "c plus plus"],
     # framework
     ".NET Framework": ["dotnet framework", ".net framework", "netfx"],
+    "NestJS": ["nestjs"],
+    "Express": ["express", "express.js", "expressjs"],
     "Angular": ["ng", "angular2", "angular.io"],
     "Vue.js": ["vue", "vuejs"],
     "MyBatis": ["ibatis", "mybatis spring"],
@@ -380,6 +434,10 @@ ALIASES: dict[str, list[str]] = {
     # middleware
     "HCL Domino": ["lotus domino", "ibm domino", "domino"],
     "HCL Notes": ["lotus notes", "ibm notes", "notes"],
+    "Apache Tomcat": ["tomcat", "apache tomcat"],
+    "Apache HTTP Server": ["apache", "apache httpd", "httpd"],
+    "NGINX": ["nginx", "engine x"],
+    "Microsoft IIS": ["iis", "internet information services"],
     # OS
     "Windows Server": ["windows", "win server", "winsrv", "win"],
     "Amazon Linux": ["amzn", "aws linux", "amazonlinux"],
@@ -389,6 +447,7 @@ ALIASES: dict[str, list[str]] = {
     "Microsoft SQL Server": ["mssql", "sql server", "ms sql"],
     "Oracle Database": ["oracle", "oracle db", "oracledb"],
     "SAP MaxDB": ["maxdb", "max db", "sapdb"],
+    "Notes DB": ["notes db", "domino db"],
     "MongoDB": ["mongo"],
     "MariaDB": ["maria"],
     "PostgreSQL": ["postgres", "postgre", "pg"],

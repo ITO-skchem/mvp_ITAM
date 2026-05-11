@@ -6,7 +6,7 @@ SERVICE_PERSON_GRID_COLUMNS: list[dict[str, str]] = [
     {"role_code": "DT_TEAM", "attribute_code": "SVC_ATTR_PERSON_DT_TEAM", "label": "DT팀"},
     {"role_code": "ADMIN", "attribute_code": "SVC_ATTR_PERSON_ADMIN", "label": "관리자"},
     {"role_code": "OPERATOR", "attribute_code": "SVC_ATTR_PERSON_OPERATOR", "label": "운영자"},
-    {"role_code": "INFRA_OPERATOR", "attribute_code": "SVC_ATTR_PERSON_INFRA_OPERATOR", "label": "Infra 담당자"},
+    {"role_code": "INFRA_OPERATOR", "attribute_code": "SVC_ATTR_PERSON_INFRA_OPERATOR", "label": "Infra담당자"},
 ]
 
 

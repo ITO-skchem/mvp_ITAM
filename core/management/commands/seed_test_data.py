@@ -41,7 +41,7 @@ class Command(BaseCommand):
         AttributeCode.objects.all().delete()
 
         svc = ServiceMaster.objects.create(
-            name="ITAM 포털",
+            name="IT구성관리 시스템",
             category_code=c("service_category", "ERP"),
             status_code=c("service_status", "운영중"),
             build_type_code=c("build_type", "SI개발"),

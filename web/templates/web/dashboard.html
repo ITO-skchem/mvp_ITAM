@@ -1,6 +1,6 @@
 {% extends "web/base.html" %}
 
-{% block title %}메인 | ITAM 포털{% endblock %}
+{% block title %}메인 | IT구성관리 시스템{% endblock %}
 
 {% block content %}
 <h2>운영 메뉴</h2>
@@ -9,8 +9,8 @@
 <div class="card-grid">
     <div class="card">
         <h3>시스템 통합정보</h3>
-        <div class="count">{{ counts.infra }}</div>
-        <a href="{% url 'web:asset_list' %}">목록 보기</a>
+        <div class="count">-</div>
+        <a href="{% url 'web:integrated_view' %}">목록 보기</a>
     </div>
     <div class="card">
         <h3>서비스 마스터</h3>

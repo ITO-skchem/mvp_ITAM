@@ -1,4 +1,4 @@
-# ITAM Portal (MVP)
+# IT구성관리 시스템 (MVP)
 
 Python/Django 기반 인프라 자산관리(InfraAsset) MVP입니다.  
 Admin(Jazzmin) 중심으로 마스터 데이터와 인프라 자산을 관리하고, FAISS + sentence-transformers 기반 AI 검색 API를 제공합니다.

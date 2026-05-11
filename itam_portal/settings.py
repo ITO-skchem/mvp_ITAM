@@ -142,7 +142,7 @@ STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 
 JAZZMIN_SETTINGS = {
-    "site_title": "IT 자산관리 포털",
+    "site_title": "IT구성관리 시스템",
     "site_header": "IT Asset Management",
     "welcome_sign": "ITAM Admin",
     "search_model": ["masters.ServiceMaster", "assets.InfraAsset"],

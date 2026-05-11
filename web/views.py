@@ -486,6 +486,13 @@ def build_list_redirect(path, query="", page="", failed_ids=None):
     return f"{path}?{urlencode(params)}" if params else path
 
 
+def paginate_all_rows(qs, page_param):
+    """목록 그리드에서 전체 행을 표시한다(고정 100건 페이징 없음)."""
+    total = qs.count()
+    paginator = Paginator(qs, max(total, 1))
+    return paginator.get_page(page_param)
+
+
 def code_values(group_key):
     return list(
         Code.objects.filter(group__key=group_key, group__is_active=True, is_active=True)
@@ -581,51 +588,15 @@ def dashboard(request):
 @login_required
 @permission_required("assets.view_infraasset", raise_exception=True)
 def asset_list(request):
-    query = request.GET.get("q", "").strip()
-    qs = InfraAsset.objects.all().order_by("service_mgmt_no", "asset_mgmt_no")
-    if query:
-        qs = qs.filter(build_model_text_search_q(InfraAsset, query))
-    if request.GET.get("export") == "1":
-        df = pd.DataFrame(
-            list(
-                qs.values(
-                    "system_mgmt_no",
-                    "service_name",
-                    "hostname",
-                    "customer_owner_name",
-                    "appl_owner_name",
-                    "partner_operator_name",
-                    "server_owner_name",
-                    "db_owner_name",
-                    "server_type",
-                    "operation_dev",
-                    "network_zone",
-                    "platform_type",
-                    "ip",
-                    "port",
-                    "location",
-                    "mw",
-                    "runtime",
-                    "os_dbms",
-                    "url_or_db_name",
-                    "ssl_domain",
-                    "cert_format",
-                    "remark1",
-                    "remark2",
-                )
-            )
-        )
-        return to_excel_response(df, "infra_assets.xlsx")
-    paginator = Paginator(qs, 100)
-    page_obj = paginator.get_page(request.GET.get("page"))
-    return render(request, "web/asset_list.html", {"assets": page_obj.object_list, "page_obj": page_obj, "q": query})
+    # 과거(미사용) 화면: 현재는 시스템 통합정보 통합 View(`integrated_view`)를 사용한다.
+    return redirect("web:integrated_view")
 
 
 @login_required
 @permission_required("assets.view_infraasset", raise_exception=True)
 def asset_detail(request, pk):
-    obj = get_object_or_404(InfraAsset, pk=pk)
-    return render(request, "web/asset_detail.html", {"asset": obj})
+    # 과거(미사용) 화면: 현재는 시스템 통합정보 통합 View(`integrated_view`)를 사용한다.
+    return redirect("web:integrated_view")
 
 
 @login_required
@@ -766,8 +737,7 @@ def service_master_list(request):
         messages.success(request, "서비스 마스터 저장 완료")
         return redirect(build_list_redirect(request.path, query=query, page=page))
 
-    paginator = Paginator(qs, 100)
-    page_obj = paginator.get_page(request.GET.get("page"))
+    page_obj = paginate_all_rows(qs, request.GET.get("page"))
     p_label_map = person_label_map()
     for s in page_obj.object_list:
         raw_sa = {}
@@ -986,8 +956,7 @@ def person_master_list(request):
         messages.success(request, "담당자 마스터 저장 완료")
         return redirect(build_list_redirect(request.path, query=query, page=page))
 
-    paginator = Paginator(qs, 100)
-    page_obj = paginator.get_page(request.GET.get("page"))
+    page_obj = paginate_all_rows(qs, request.GET.get("page"))
     sa_by_service_role = {}
     for sa in ServiceAttribute.objects.filter(attribute_code_id__in=attribute_codes_for_grid()):
         sa_by_service_role[(sa.service_id, sa.attribute_code_id)] = set(parse_person_ids_from_attr_value(sa.value))
@@ -1205,8 +1174,7 @@ def configuration_master_list(request):
         messages.success(request, "구성정보 마스터 저장 완료")
         return redirect(build_list_redirect(request.path, query=query, page=page))
 
-    paginator = Paginator(qs, 100)
-    page_obj = paginator.get_page(request.GET.get("page"))
+    page_obj = paginate_all_rows(qs, request.GET.get("page"))
     service_name_options = sorted(
         {n for n in ServiceMaster.objects.values_list("name", flat=True) if (n or "").strip()}
     )
@@ -1385,8 +1353,7 @@ def component_master_list(request):
         messages.success(request, "컴포넌트 마스터 저장 완료")
         return redirect(build_list_redirect(request.path, query=query, page=page))
 
-    paginator = Paginator(qs, 100)
-    page_obj = paginator.get_page(request.GET.get("page"))
+    page_obj = paginate_all_rows(qs, request.GET.get("page"))
     return render(
         request,
         "web/component_master_list.html",

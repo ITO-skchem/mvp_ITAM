@@ -6,11 +6,12 @@
 설계 원칙
 - 보안: 로그인 필요. 엑셀 export는 staff 권한자만 허용. 화이트리스트 메타에 등록된
   field_id 만 허용해 임의 컬럼 노출/필터를 차단.
-- 성능: select_related/prefetch_related 적용, 페이징 강제, 한 페이지 최대 500건.
+- 성능: select_related/prefetch_related 적용. 조회 결과는 페이징 없이 전체 반환.
 """
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from datetime import date, datetime
 from io import BytesIO
@@ -18,7 +19,6 @@ from typing import Any, Callable
 
 import pandas as pd
 from django.contrib.auth.decorators import login_required
-from django.core.paginator import Paginator
 from django.db.models import Prefetch, Q, QuerySet
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import render
@@ -35,11 +35,40 @@ from masters.models import (
     ServiceConfigurationMapping,
     ServiceMaster,
 )
+from web.models import IntegratedViewPreset
+from web.views import normalize_service_search_key
 from masters.service_person_grid import SERVICE_PERSON_GRID_COLUMNS
+
+# 서비스 마스터 검색과 동일한 `키:값` 토큰 + `키=값` 지원 (값은 공백 없는 토큰)
+INTEGRATED_TERM_PATTERN = re.compile(r"([^\s:=][^:=]*?)\s*(?:[:=])\s*([^\s]+)")
+TEXT_FILTER_SLOT_COUNT = 5
 
 
 # 서비스의 역할 슬롯 ServiceAttribute attribute_code 집합 (값이 PersonMaster.pk CSV)
 SERVICE_PERSON_ATTRIBUTE_CODES: set[str] = {c["attribute_code"] for c in SERVICE_PERSON_GRID_COLUMNS}
+_SERVICE_PERSON_LABEL_BY_CODE: dict[str, str] = {c["attribute_code"]: c["label"] for c in SERVICE_PERSON_GRID_COLUMNS}
+_SERVICE_PERSON_ORDER: list[str] = [c["attribute_code"] for c in SERVICE_PERSON_GRID_COLUMNS]
+
+
+def _canonical_service_person_field_order(selected_fields: list[FieldDef]) -> list[FieldDef]:
+    """선택된 필드 중 서비스 담당자 속성 4종은 서비스 마스터 그리드 순서(DT팀→관리자→운영자→Infra담당자)로 묶어 정렬."""
+    person_set = {
+        f
+        for f in selected_fields
+        if f.group == "service" and f.source == "attribute" and f.attribute_code in SERVICE_PERSON_ATTRIBUTE_CODES
+    }
+    if not person_set:
+        return selected_fields
+    by_code = {f.attribute_code: f for f in person_set}
+    persons_sorted = [by_code[c] for c in _SERVICE_PERSON_ORDER if c in by_code]
+    first_idx = next(i for i, f in enumerate(selected_fields) if f in person_set)
+    out: list[FieldDef] = []
+    for i, f in enumerate(selected_fields):
+        if i == first_idx:
+            out.extend(persons_sorted)
+        if f not in person_set:
+            out.append(f)
+    return out
 
 
 # 그룹 키 → (라벨, base 모델). 화면 트리 순서.
@@ -188,21 +217,31 @@ def _attribute_data_type(ac: AttributeCode) -> str:
 def build_attribute_fields() -> dict[str, list[FieldDef]]:
     """등록된 AttributeCode + 구성정보의 컴포넌트 유형 가상 컬럼을 그룹별 FieldDef 로 변환."""
     out: dict[str, list[FieldDef]] = {g: [] for g, _ in GROUPS}
+    service_attrs: list[FieldDef] = []
     for ac in AttributeCode.objects.select_related("data_type_code", "target_code").all():
         target = getattr(ac.target_code, "code", "") if ac.target_code else ""
         group = _ATTR_TARGET_TO_GROUP.get(target)
         if not group:
             continue
-        out[group].append(
-            FieldDef(
-                field_id=f"{group}.attr.{ac.attribute_code}",
-                group=group,
-                label=ac.name or ac.attribute_code,
-                data_type=_attribute_data_type(ac),
-                source="attribute",
-                attribute_code=ac.attribute_code,
-            )
+        label = _SERVICE_PERSON_LABEL_BY_CODE.get(ac.attribute_code) or ac.name or ac.attribute_code
+        fd = FieldDef(
+            field_id=f"{group}.attr.{ac.attribute_code}",
+            group=group,
+            label=label,
+            data_type=_attribute_data_type(ac),
+            source="attribute",
+            attribute_code=ac.attribute_code,
         )
+        if group == "service":
+            service_attrs.append(fd)
+        else:
+            out[group].append(fd)
+    order_idx = {c: i for i, c in enumerate(_SERVICE_PERSON_ORDER)}
+    persons = [f for f in service_attrs if f.attribute_code in SERVICE_PERSON_ATTRIBUTE_CODES]
+    others = [f for f in service_attrs if f.attribute_code not in SERVICE_PERSON_ATTRIBUTE_CODES]
+    persons.sort(key=lambda f: order_idx.get(f.attribute_code, 999))
+    others.sort(key=lambda f: f.attribute_code)
+    out["service"] = persons + others
     from core.models import Code as _Code
 
     type_codes = list(
@@ -561,38 +600,119 @@ def _python_filter(value_for_field: Any, op: str, value: Any) -> bool:
 # ──────────────────────────────────────────────────────────────────
 # 검색 본체
 # ──────────────────────────────────────────────────────────────────
-def _resolve_request(payload: dict[str, Any]) -> tuple[str, list[FieldDef], list[dict[str, Any]], int, int]:
+def _normalize_text_filter_cells(raw: Any) -> list[str]:
+    if not isinstance(raw, list):
+        raw = []
+    cells = [("" if x is None else str(x)) for x in raw]
+    while len(cells) < TEXT_FILTER_SLOT_COUNT:
+        cells.append("")
+    return cells[:TEXT_FILTER_SLOT_COUNT]
+
+
+def _parse_text_filters(payload: dict[str, Any]) -> list[str]:
+    raw = payload.get("text_filters")
+    if raw is None:
+        raw = payload.get("conditions")
+    return _normalize_text_filter_cells(raw)
+
+
+def _parse_condition_cell(query: str) -> tuple[list[tuple[str, str]], str]:
+    """한 칸 문자열에서 구조화 토큰(컬럼명:값 / 컬럼명=값)과 나머지 자유 텍스트를 분리."""
+    terms: list[tuple[str, str]] = []
+    spans: list[tuple[int, int]] = []
+    for m in INTEGRATED_TERM_PATTERN.finditer(query or ""):
+        key = normalize_service_search_key(m.group(1))
+        value = (m.group(2) or "").strip()
+        if key and value:
+            terms.append((key, value))
+            spans.append(m.span())
+    if not spans:
+        return [], (query or "").strip()
+    rest = query or ""
+    for s, e in reversed(spans):
+        rest = rest[:s] + " " + rest[e:]
+    return terms, " ".join(rest.split())
+
+
+def _column_search_key_index(selected_fields: list[FieldDef]) -> dict[str, str]:
+    """normalize된 검색 키 → field_id (그리드 컬럼 라벨·필드 접미사 등)."""
+    idx: dict[str, str] = {}
+    for f in selected_fields:
+        nk = normalize_service_search_key(f.label)
+        if nk:
+            idx[nk] = f.field_id
+        tail = f.field_id.split(".")[-1]
+        for variant in (tail, tail.replace("_", "")):
+            tk = normalize_service_search_key(variant)
+            if tk:
+                idx[tk] = f.field_id
+        if "_" in tail:
+            prefix = tail.rsplit("_", 1)[0]
+            pk = normalize_service_search_key(prefix)
+            if pk:
+                idx[pk] = f.field_id
+        full = normalize_service_search_key(f.field_id.replace(".", ""))
+        if full:
+            idx[full] = f.field_id
+    return idx
+
+
+def _row_matches_condition_cell(
+    row: dict[str, Any], cell: str, col_index: dict[str, str], haystack: str
+) -> bool:
+    cell_st = (cell or "").strip()
+    if not cell_st:
+        return True
+    structured, free = _parse_condition_cell(cell_st)
+    for k, v in structured:
+        fid = col_index.get(k)
+        v_l = v.lower()
+        if fid is not None:
+            cell_display = str(row.get(fid, "") or "").lower()
+            if v_l not in cell_display:
+                return False
+        else:
+            frag1 = f"{k}:{v}".lower()
+            frag2 = f"{k}={v}".lower()
+            if frag1 not in haystack and frag2 not in haystack and v_l not in haystack:
+                return False
+    ft = free.strip()
+    if ft and ft.lower() not in haystack:
+        return False
+    return True
+
+
+def _row_matches_integrated_cells(row: dict[str, Any], text_cells: list[str], col_index: dict[str, str]) -> bool:
+    hay = _row_text_haystack(row)
+    for cell in text_cells:
+        if not (cell or "").strip():
+            continue
+        if not _row_matches_condition_cell(row, cell, col_index, hay):
+            return False
+    return True
+
+
+def _resolve_request(payload: dict[str, Any]) -> tuple[str, list[FieldDef], list[str]]:
     selected_ids: list[str] = list(payload.get("selected_fields") or [])
-    conditions: list[dict[str, Any]] = list(payload.get("conditions") or [])
-    page = max(int(payload.get("page") or 1), 1)
-    page_size = min(max(int(payload.get("page_size") or 50), 1), 500)
 
     field_index = _build_field_index()
     selected_fields = [field_index[fid] for fid in selected_ids if fid in field_index]
+    selected_fields = _canonical_service_person_field_order(selected_fields)
     if not selected_fields:
         raise ValueError("선택된 항목이 없습니다.")
 
-    valid_conditions: list[dict[str, Any]] = []
-    for c in conditions:
-        fid = c.get("field_id")
-        if not fid or fid not in field_index:
-            continue
-        valid_conditions.append({"field": field_index[fid], "op": c.get("operator") or "contains", "value": c.get("value")})
-
+    text_cells = _parse_text_filters(payload)
     base_group = selected_fields[0].group
-    return base_group, selected_fields, valid_conditions, page, page_size
+    return base_group, selected_fields, text_cells
+
+
+def _row_text_haystack(row: dict[str, Any]) -> str:
+    return " ".join("" if v is None else str(v) for v in row.values()).lower()
 
 
 def _execute_search(payload: dict[str, Any]) -> dict[str, Any]:
-    base_group, selected_fields, conditions, page, page_size = _resolve_request(payload)
+    base_group, selected_fields, text_cells = _resolve_request(payload)
     qs = BASE_QS_BUILDERS[base_group]()
-
-    for c in conditions:
-        f: FieldDef = c["field"]
-        if f.group == base_group and f.source == "column":
-            q = _orm_filter_for_field(f, c["op"], c["value"])
-            if q is not None:
-                qs = qs.filter(q)
 
     qs = qs.distinct()
 
@@ -605,39 +725,26 @@ def _execute_search(payload: dict[str, Any]) -> dict[str, Any]:
             row[f.field_id] = _related_value(base_group, obj, f)
         rows_with_obj.append((obj, row))
 
-    py_conditions = [
-        c
-        for c in conditions
-        if not (c["field"].group == base_group and c["field"].source == "column")
-    ]
-    if py_conditions:
-        filtered: list[tuple[Any, dict[str, Any]]] = []
-        for obj, row in rows_with_obj:
-            keep = True
-            for c in py_conditions:
-                f: FieldDef = c["field"]
-                if not _python_filter(row.get(f.field_id, ""), c["op"], c["value"]):
-                    keep = False
-                    break
-            if keep:
-                filtered.append((obj, row))
-        rows_with_obj = filtered
+    if any((c or "").strip() for c in text_cells):
+        col_index = _column_search_key_index(selected_fields)
+        rows_with_obj = [
+            (obj, row)
+            for obj, row in rows_with_obj
+            if _row_matches_integrated_cells(row, text_cells, col_index)
+        ]
 
     total = len(rows_with_obj)
-    paginator = Paginator(rows_with_obj, page_size)
-    page_obj = paginator.get_page(page)
-
     columns = [{"field_id": f.field_id, "label": f.label, "data_type": f.data_type} for f in selected_fields]
-    rows = [row for _, row in page_obj.object_list]
+    rows = [row for _, row in rows_with_obj]
 
     return {
         "base_group": base_group,
         "columns": columns,
         "rows": rows,
         "total": total,
-        "page": page_obj.number,
-        "page_size": page_size,
-        "page_count": paginator.num_pages,
+        "page": 1,
+        "page_size": total,
+        "page_count": 1,
     }
 
 
@@ -699,8 +806,6 @@ def integrated_view_export(request):
     try:
         payload = _parse_json_body(request)
         payload = dict(payload or {})
-        payload["page"] = 1
-        payload["page_size"] = 500  # 안전 상한
         result = _execute_search(payload)
     except ValueError as e:
         return JsonResponse({"ok": False, "error": str(e)}, status=400)
@@ -725,3 +830,76 @@ def integrated_view_export(request):
 @require_GET
 def integrated_view_meta(request):
     return JsonResponse({"ok": True, "meta": get_view_field_meta()})
+
+
+def _preset_text_filter_cells(conditions_val: Any) -> list[str]:
+    """JSON conditions 필드: 신규는 문자열 리스트, 구버전은 필드조건 dict 리스트(무시). 항상 5칸."""
+    if isinstance(conditions_val, list) and (not conditions_val or isinstance(conditions_val[0], str)):
+        return _normalize_text_filter_cells(conditions_val)
+    return _normalize_text_filter_cells([])
+
+
+@login_required
+@require_GET
+def integrated_view_presets(request):
+    presets = {}
+    for p in IntegratedViewPreset.objects.filter(user=request.user, slot__in=[1, 2, 3]):
+        tf = _preset_text_filter_cells(p.conditions)
+        presets[p.slot] = {
+            "name": p.name,
+            "selected_fields": p.selected_fields,
+            "text_filters": tf,
+            "updated_at": p.updated_at.isoformat(),
+        }
+    result = {}
+    for slot in (1, 2, 3):
+        result[str(slot)] = presets.get(slot) or None
+    return JsonResponse({"ok": True, "presets": result})
+
+
+@login_required
+@require_POST
+def integrated_view_presets_save(request):
+    try:
+        payload = _parse_json_body(request)
+        slot = int(payload.get("slot") or 0)
+        if slot not in (1, 2, 3):
+            return JsonResponse({"ok": False, "error": "slot은 1~3만 허용됩니다."}, status=400)
+        selected_fields = list(payload.get("selected_fields") or [])
+        raw_tf = payload.get("text_filters", payload.get("conditions"))
+        text_cells = _normalize_text_filter_cells(raw_tf)
+        name = str(payload.get("name") or "").strip()
+
+        obj, _ = IntegratedViewPreset.objects.update_or_create(
+            user=request.user,
+            slot=slot,
+            defaults={"name": name, "selected_fields": selected_fields, "conditions": text_cells},
+        )
+        return JsonResponse(
+            {
+                "ok": True,
+                "preset": {
+                    "slot": obj.slot,
+                    "name": obj.name,
+                    "selected_fields": obj.selected_fields,
+                    "text_filters": _preset_text_filter_cells(obj.conditions),
+                    "updated_at": obj.updated_at.isoformat(),
+                },
+            }
+        )
+    except Exception as e:
+        return JsonResponse({"ok": False, "error": f"프리셋 저장 중 오류가 발생했습니다: {e}"}, status=500)
+
+
+@login_required
+@require_POST
+def integrated_view_presets_clear(request):
+    try:
+        payload = _parse_json_body(request)
+        slot = int(payload.get("slot") or 0)
+        if slot not in (1, 2, 3):
+            return JsonResponse({"ok": False, "error": "slot은 1~3만 허용됩니다."}, status=400)
+        IntegratedViewPreset.objects.filter(user=request.user, slot=slot).delete()
+        return JsonResponse({"ok": True, "slot": slot})
+    except Exception as e:
+        return JsonResponse({"ok": False, "error": str(e)}, status=500)

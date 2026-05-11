@@ -156,6 +156,15 @@ MongoDB
 MariaDB
 PostgreSQL
 
+***
+컴포넌트 마스터의 정보에 아래의 alias 값으로 실제 분석이 가능한 표준화된 컴포넌트 정보를 추가해라. 예를 들어, C#은 language 유형으로 버전별로 생성 + .Net framework으로 framework유형으로 버전별로 생성, Spring은 framework 유형으로 버전별로 생성
+1) tomcat
+2) apache
+3) IIS
+4) nestjs / express
+5) nginx
+6) notes DB
+
 시스템 통합정보 화면을 아래와 같이 수정한다.
 이 화면의 역할은 각 마스터의 컬럼과 속성컬럼을 조합하여 개인화된 통합 View를 유연하게 만들어 보여주는 것인이다.
 설계할때 보안, 성능을 충분히 고려하여야 한다.
