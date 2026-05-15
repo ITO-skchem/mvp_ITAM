@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/4.2/ref/settings/
 """
 
 import os
+import sys
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -22,8 +23,15 @@ _django_compat.apply_django_template_context_copy_fix()
 
 load_dotenv()
 
-# Build paths inside the project like this: BASE_DIR / 'subdir'.
-BASE_DIR = Path(__file__).resolve().parent.parent
+# Build paths: dev = repo root; PyInstaller onefile = writable dir next to exe + bundle in _MEIPASS.
+if getattr(sys, "frozen", False):
+    RUNTIME_DIR = Path(sys.executable).resolve().parent
+    BUNDLE_DIR = Path(getattr(sys, "_MEIPASS", str(RUNTIME_DIR)))
+    BASE_DIR = RUNTIME_DIR
+else:
+    BASE_DIR = Path(__file__).resolve().parent.parent
+    RUNTIME_DIR = BASE_DIR
+    BUNDLE_DIR = BASE_DIR
 
 
 # Quick-start development settings - unsuitable for production
@@ -73,7 +81,7 @@ ROOT_URLCONF = "itam_portal.urls"
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        "DIRS": [BASE_DIR / "templates"],
+        "DIRS": [d for d in (BASE_DIR / "templates", BUNDLE_DIR / "templates") if d.is_dir()],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [

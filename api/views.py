@@ -2,8 +2,6 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from ai_search.services import AssetSearchService
-
 
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
@@ -13,6 +11,8 @@ def asset_ai_search(request):
         return Response({"query": query, "results": []})
 
     try:
+        from ai_search.services import AssetSearchService
+
         svc = AssetSearchService()
     except FileNotFoundError:
         return Response(

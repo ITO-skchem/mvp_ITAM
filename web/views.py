@@ -14,7 +14,6 @@ from django.db.models import Prefetch, Q
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 
-from ai_search.services import AssetSearchService
 from assets.models import InfraAsset
 from core.models import AuditLog, Code
 from masters.models import (
@@ -1439,6 +1438,8 @@ def ai_asset_search(request):
     error = ""
     if query:
         try:
+            from ai_search.services import AssetSearchService
+
             svc = AssetSearchService()
             results = svc.search(query, k=10)
         except FileNotFoundError:

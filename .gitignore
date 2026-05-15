@@ -4,3 +4,8 @@ __pycache__/
 .DS_Store
 .env
 ~$*.xlsx
+
+# PyInstaller / portable build output
+build/
+dist/
+exec/
