@@ -38,8 +38,12 @@ if (-not (Test-Path $exe)) {
     Write-Error "Missing executable: $exe`nRun: powershell -ExecutionPolicy Bypass -File .\scripts\build_exec.ps1"
 }
 
-& $Gh auth status 2>$null | Out-Null
-if ($LASTEXITCODE -ne 0 -and -not $env:GH_TOKEN -and -not $env:GITHUB_TOKEN) {
+$prevEap = $ErrorActionPreference
+$ErrorActionPreference = "SilentlyContinue"
+& $Gh auth status *> $null
+$authExit = $LASTEXITCODE
+$ErrorActionPreference = $prevEap
+if ($authExit -ne 0 -and -not $env:GH_TOKEN -and -not $env:GITHUB_TOKEN) {
     Write-Error @"
 Not authenticated for GitHub API.
   Run:  gh auth login
