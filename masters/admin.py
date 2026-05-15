@@ -18,8 +18,16 @@ from .models import (
 @admin.register(ServiceMaster)
 class ServiceAdmin(admin.ModelAdmin):
     search_fields = ("service_mgmt_no", "name", "description")
-    list_display = ("service_mgmt_no", "name", "category_code", "status_code", "build_type_code", "service_grade_code")
-    list_filter = ("category_code", "status_code", "build_type_code", "service_grade_code")
+    list_display = (
+        "service_mgmt_no",
+        "name",
+        "category_code",
+        "ito_code",
+        "status_code",
+        "build_type_code",
+        "service_grade_code",
+    )
+    list_filter = ("category_code", "ito_code", "status_code", "build_type_code", "service_grade_code")
 
 
 @admin.register(PersonMaster)

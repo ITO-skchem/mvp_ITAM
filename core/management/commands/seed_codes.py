@@ -2,7 +2,7 @@ from django.core.management.base import BaseCommand
 
 from core.models import Code, CodeGroup
 from masters.models import Component, ConfigurationMaster
-from masters.service_person_grid import ensure_service_person_attribute_codes
+from masters.service_person_grid import ensure_service_duty_attribute_code, ensure_service_person_attribute_codes
 
 
 # 이전 component_type 코드 → 새 코드 (seed 후 비활성화되기 전에 FK를 옮김)
@@ -114,6 +114,10 @@ SEED_GROUPS = {
     "service_status": [("운영중", "운영중"), ("대기", "대기"), ("종료", "종료")],
     "build_type": [("SI개발", "SI개발"), ("솔루션", "솔루션"), ("기타", "기타")],
     "service_grade": [("S", "S"), ("A", "A"), ("B", "B"), ("C", "C")],
+    "service_ito": [
+        ("통합ITO", "통합ITO"),
+        ("Non ITO", "Non ITO"),
+    ],
     "data_type": [("STRING", "문자열"), ("NUMBER", "숫자"), ("DATE", "날짜"), ("BOOL", "불리언")],
     "required_flag": [("Y", "필수"), ("N", "선택")],
     "searchable_flag": [("Y", "검색가능"), ("N", "검색불가")],
@@ -189,5 +193,6 @@ class Command(BaseCommand):
             elif group_key == "network_zone":
                 migrate_network_zone_foreign_keys()
             Code.objects.filter(group=group).exclude(code__in=valid_codes).update(is_active=False)
+        ensure_service_duty_attribute_code()
         ensure_service_person_attribute_codes()
         self.stdout.write(self.style.SUCCESS("재정리 공통 코드 시드 완료"))

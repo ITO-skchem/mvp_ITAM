@@ -16,7 +16,11 @@ from masters.models import (
     ServiceMaster,
     ServicePersonMapping,
 )
-from masters.service_person_grid import ensure_service_person_attribute_codes
+from masters.service_person_grid import (
+    SERVICE_DUTY_ATTRIBUTE_CODE,
+    ensure_service_duty_attribute_code,
+    ensure_service_person_attribute_codes,
+)
 
 
 def c(group_key, code):
@@ -43,6 +47,7 @@ class Command(BaseCommand):
         svc = ServiceMaster.objects.create(
             name="IT구성관리 시스템",
             category_code=c("service_category", "ERP"),
+            ito_code=c("service_ito", "통합ITO"),
             status_code=c("service_status", "운영중"),
             build_type_code=c("build_type", "SI개발"),
             itgc_code=c("yn_flag", "예"),
@@ -94,10 +99,13 @@ class Command(BaseCommand):
             updated_by="system",
         )
 
+        ensure_service_duty_attribute_code()
         ensure_service_person_attribute_codes()
 
         svc_attr_dt = AttributeCode.objects.get(pk="SVC_ATTR_PERSON_DT_TEAM")
         ServiceAttribute.objects.create(service=svc, attribute_code=svc_attr_dt, value=str(person.pk))
+        duty_ac = AttributeCode.objects.get(pk=SERVICE_DUTY_ATTRIBUTE_CODE)
+        ServiceAttribute.objects.create(service=svc, attribute_code=duty_ac, value="클라우드운영셀")
 
         cfg_attr = AttributeCode.objects.create(
             attribute_code="CFG_OWNER_DEPT",

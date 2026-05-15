@@ -27,7 +27,12 @@ from masters.models import (
     ServiceConfigurationMapping,
     ServiceMaster,
 )
-from masters.service_person_grid import SERVICE_PERSON_GRID_COLUMNS, attribute_codes_for_grid
+from masters.service_person_grid import (
+    SERVICE_DUTY_ATTRIBUTE_CODE,
+    SERVICE_PERSON_GRID_COLUMNS,
+    attribute_codes_for_grid,
+    service_grid_prefetch_attribute_codes,
+)
 
 
 SEARCH_TERM_PATTERN = re.compile(r"([^\s:][^:]*?)\s*:\s*([^\s]+)")
@@ -44,6 +49,9 @@ SERVICE_SEARCH_FIELD_ALIASES = {
     "grade": "service_grade_code",
     "상태": "status_code",
     "status": "status_code",
+    "ito": "ito_code",
+    "ITO": "ito_code",
+    "담당현업": "duty_attr",
 }
 SERVICE_ROLE_FIELD_ALIASES = {
     "dt팀": "SVC_ATTR_PERSON_DT_TEAM",
@@ -58,6 +66,7 @@ SERVICE_ROLE_FIELD_ALIASES = {
 }
 SERVICE_CODE_FIELD_MAP = {
     "category_code": ("service_category", "category_code"),
+    "ito_code": ("service_ito", "ito_code"),
     "build_type_code": ("build_type", "build_type_code"),
     "itgc_code": ("yn_flag", "itgc_code"),
     "service_grade_code": ("service_grade", "service_grade_code"),
@@ -236,6 +245,11 @@ def q_for_service_structured_term(key: str, value: str):
         return Q(pk__in=[]) if not code_ids else Q(**{f"{model_field}_id__in": code_ids})
     if field_key == "name":
         return Q(name__icontains=value)
+    if field_key == "duty_attr":
+        return Q(
+            service_attributes__attribute_code_id=SERVICE_DUTY_ATTRIBUTE_CODE,
+            service_attributes__value__icontains=value,
+        )
 
     acode = SERVICE_ROLE_FIELD_ALIASES.get(key)
     if acode:
@@ -257,6 +271,10 @@ def q_for_service_code_fields_keyword(keyword: str):
         )
         if code_ids:
             q |= Q(**{f"{model_field}_id__in": code_ids})
+    q |= Q(
+        service_attributes__attribute_code_id=SERVICE_DUTY_ATTRIBUTE_CODE,
+        service_attributes__value__icontains=kw,
+    )
     return q
 
 
@@ -599,20 +617,41 @@ def asset_detail(request, pk):
     return redirect("web:integrated_view")
 
 
+def persist_service_duty_attribute(service_obj: ServiceMaster, row: dict) -> None:
+    """서비스 마스터 그리드/엑셀의 담당현업(문자열)을 ServiceAttribute 로 저장."""
+    key = f"attr_{SERVICE_DUTY_ATTRIBUTE_CODE}"
+    duty_val = (row.get(key) or "").strip()
+    if duty_val:
+        ServiceAttribute.objects.update_or_create(
+            service=service_obj,
+            attribute_code_id=SERVICE_DUTY_ATTRIBUTE_CODE,
+            defaults={"value": duty_val},
+        )
+    else:
+        ServiceAttribute.objects.filter(
+            service=service_obj, attribute_code_id=SERVICE_DUTY_ATTRIBUTE_CODE
+        ).delete()
+
+
 @login_required
 @permission_required("masters.view_servicemaster", raise_exception=True)
 def service_master_list(request):
     query = request.GET.get("q", "").strip()
     page = request.GET.get("page", "").strip()
-    attr_codes = attribute_codes_for_grid()
+    grid_attr_codes = service_grid_prefetch_attribute_codes()
     qs = (
         ServiceMaster.objects.select_related(
-            "category_code", "status_code", "build_type_code", "itgc_code", "service_grade_code"
+            "category_code",
+            "ito_code",
+            "status_code",
+            "build_type_code",
+            "itgc_code",
+            "service_grade_code",
         )
         .prefetch_related(
             Prefetch(
                 "service_attributes",
-                queryset=ServiceAttribute.objects.filter(attribute_code_id__in=attr_codes),
+                queryset=ServiceAttribute.objects.filter(attribute_code_id__in=grid_attr_codes),
             )
         )
         .order_by("service_mgmt_no")
@@ -645,8 +684,12 @@ def service_master_list(request):
         p_label_map = person_label_map()
         rows = []
         for s in qs:
+            duty_display = ""
             role_map = {}
             for sa in s.service_attributes.all():
+                if sa.attribute_code_id == SERVICE_DUTY_ATTRIBUTE_CODE:
+                    duty_display = (sa.value or "").strip()
+                    continue
                 role_map[sa.attribute_code_id] = join_csv_tokens(
                     [p_label_map.get(pid, str(pid)) for pid in parse_person_ids_from_attr_value(sa.value)]
                 )
@@ -654,6 +697,8 @@ def service_master_list(request):
                 "서비스ID": s.service_mgmt_no,
                 "서비스명": s.name,
                 "분류": getattr(s.category_code, "name", "") if s.category_code else "",
+                "ITO": getattr(s.ito_code, "name", "") if s.ito_code else "",
+                "담당현업": duty_display,
             }
             for col in SERVICE_PERSON_GRID_COLUMNS:
                 row[col["label"]] = role_map.get(col["attribute_code"], "")
@@ -670,12 +715,14 @@ def service_master_list(request):
             )
             rows.append(row)
         main_df = pd.DataFrame(rows)
-        ref_df = code_reference_df(["service_category", "service_status", "build_type", "yn_flag", "service_grade"])
+        ref_df = code_reference_df(
+            ["service_category", "service_ito", "service_status", "build_type", "yn_flag", "service_grade"]
+        )
         return to_excel_multi_response(
             {"서비스마스터": main_df, "코드참조": ref_df},
             "service_master.xlsx",
             readonly_columns_map={"서비스마스터": [c["label"] for c in SERVICE_PERSON_GRID_COLUMNS]},
-            code_columns_map={"서비스마스터": ["분류", "구축", "ITGC", "등급", "상태"]},
+            code_columns_map={"서비스마스터": ["분류", "ITO", "구축", "ITGC", "등급", "상태"]},
         )
 
     if request.method == "POST" and request.POST.get("action") == "import":
@@ -684,9 +731,11 @@ def service_master_list(request):
             df = pd.read_excel(up)
             actor = audit_actor_label(request)
             for _, rec in df.fillna("").iterrows():
+                duty_raw = str(rec.get("담당현업", "")).strip()
                 payload = {
                     "name": str(rec.get("서비스명", "")).strip(),
                     "category_code": code_from_value("service_category", rec.get("분류")),
+                    "ito_code": code_from_value("service_ito", rec.get("ITO")),
                     "status_code": code_from_value("service_status", rec.get("상태")),
                     "build_type_code": code_from_value("build_type", rec.get("구축")),
                     "itgc_code": code_from_value("yn_flag", rec.get("ITGC")),
@@ -696,14 +745,20 @@ def service_master_list(request):
                     "description": str(rec.get("설명", "")).strip(),
                 }
                 svc_id = str(rec.get("서비스ID", "")).strip()
-                obj = ServiceMaster.objects.filter(service_mgmt_no=svc_id).first() if svc_id else None
+                obj = None
+                if svc_id:
+                    obj = ServiceMaster.objects.filter(service_mgmt_no=svc_id).first()
                 if obj:
                     for k, v in payload.items():
                         setattr(obj, k, v)
                     obj.updated_by = actor
                     obj.save()
                 elif payload["name"]:
-                    ServiceMaster.objects.create(**payload, created_by=actor, updated_by=actor)
+                    obj = ServiceMaster.objects.create(**payload, created_by=actor, updated_by=actor)
+                if obj is not None:
+                    persist_service_duty_attribute(
+                        obj, {f"attr_{SERVICE_DUTY_ATTRIBUTE_CODE}": duty_raw}
+                    )
             messages.success(request, "서비스 마스터 엑셀 업로드 완료")
         return redirect(build_list_redirect(request.path, query=query, page=page))
 
@@ -717,6 +772,7 @@ def service_master_list(request):
             payload = {
                 "name": (row.get("name") or "").strip(),
                 "category_code": code_from_value("service_category", row.get("category_code")),
+                "ito_code": code_from_value("service_ito", row.get("ito_code")),
                 "status_code": code_from_value("service_status", row.get("status_code")),
                 "build_type_code": code_from_value("build_type", row.get("build_type_code")),
                 "itgc_code": code_from_value("yn_flag", row.get("itgc_code")),
@@ -732,8 +788,10 @@ def service_master_list(request):
                     setattr(obj, k, v)
                 obj.updated_by = actor
                 obj.save()
+                persist_service_duty_attribute(obj, row)
             elif payload["name"]:
                 obj = ServiceMaster.objects.create(**payload, created_by=actor, updated_by=actor)
+                persist_service_duty_attribute(obj, row)
         messages.success(request, "서비스 마스터 저장 완료")
         return redirect(build_list_redirect(request.path, query=query, page=page))
 
@@ -743,6 +801,7 @@ def service_master_list(request):
         raw_sa = {}
         for sa in s.service_attributes.all():
             raw_sa[sa.attribute_code_id] = str(sa.value or "").strip()
+        s.duty_attr_value = raw_sa.get(SERVICE_DUTY_ATTRIBUTE_CODE, "")
         s.person_slot_values = {
             col["attribute_code"]: join_csv_tokens(
                 [
@@ -760,6 +819,7 @@ def service_master_list(request):
             "page_obj": page_obj,
             "q": query,
             "service_category_options": code_choice_options("service_category"),
+            "service_ito_options": code_choice_options("service_ito"),
             "service_status_options": code_choice_options("service_status"),
             "build_type_options": code_choice_options("build_type"),
             "yn_flag_options": code_choice_options("yn_flag"),
@@ -972,6 +1032,11 @@ def person_master_list(request):
                 my_services.append(svc.name)
         p.assigned_service_names = join_csv_tokens(my_services)
 
+    services_catalog = [
+        {"id": s.id, "name": s.name or "", "service_mgmt_no": s.service_mgmt_no or ""} for s in service_rows
+    ]
+    services_all_json = json.dumps(services_catalog, ensure_ascii=False).replace("<", "\\u003c").replace(">", "\\u003e")
+
     return render(
         request,
         "web/person_master_list.html",
@@ -985,7 +1050,7 @@ def person_master_list(request):
             "gender_options": code_choice_options("gender"),
             "person_status_options": code_choice_options("person_status"),
             "person_status_codes": code_values("person_status"),
-            "service_name_options": [s.name for s in service_rows],
+            "services_all_json": services_all_json,
         },
     )
 

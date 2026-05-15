@@ -37,6 +37,14 @@ class ServiceMaster(AuditStampMixin):
         related_name="service_category_items",
         verbose_name="서비스 분류",
     )
+    ito_code = models.ForeignKey(
+        Code,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="service_ito_items",
+        verbose_name="ITO",
+    )
     status_code = models.ForeignKey(
         Code,
         null=True,

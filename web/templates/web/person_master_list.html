@@ -1,15 +1,48 @@
 {% extends "web/base.html" %}
 {% load web_extras %}
-{% block title %}&#45812;&#45817;&#51088; &#47560;&#49828;&#53552; | ITAM &#54252;&#53552;{% endblock %}
+{% block title %}담당자 마스터 | ITAM 포털{% endblock %}
 {% block content %}
+<style>
+  .list-screen .wrap table#grid td.cell-service-map { cursor: pointer; }
+  .list-screen .wrap table#grid td.cell-service-map input.service-map-display-input {
+    width: 100%;
+    box-sizing: border-box;
+    cursor: pointer;
+    background: #fafbff;
+  }
+  .cmm-form-row { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
+  .cmm-form-row label { width: 5rem; flex: 0 0 5rem; font-size: 13px; color: #444; }
+  .cmm-form-row input,
+  .cmm-form-row select { padding: 6px 8px; font-size: 13px; min-height: 30px; box-sizing: border-box; }
+  .cmm-form-row input[type="text"] { width: 16rem; }
+  .cmm-form-row select { width: 22rem; max-width: 100%; }
+  .cmm-form-row select[disabled] { background: #f0f0f0; color: #555; }
+  .cmm-msg { margin-left: 8px; font-size: 12px; min-height: 16px; }
+  .cmm-msg.err { color: #b10000; }
+  .cmm-msg.ok { color: #1a6b1a; }
+  .cmm-msg.warn { color: #a86b00; }
+  .cmm-mapped-list { list-style: none; padding-left: 0; margin: 6px 0 0 0; max-height: 180px; overflow: auto; }
+  .cmm-mapped-list li {
+    display: flex; align-items: center; gap: 8px; padding: 6px 8px; margin-bottom: 4px;
+    border: 1px solid #cfd5e3; border-radius: 4px; cursor: pointer; font-size: 13px;
+  }
+  .cmm-mapped-list li.focus { background: #e7efff; border-color: #99b3df; }
+  .cmm-mapped-list li .focus-mark { width: 1rem; flex: 0 0 1rem; color: #1f2a44; font-weight: bold; }
+  .cmm-foot-actions { display: flex; gap: 8px; justify-content: flex-end; }
+  .cmm-foot-actions button { padding: 6px 14px; cursor: pointer; border-radius: 4px; }
+  .cmm-add { background: #1f6b3a; border: 1px solid #1f6b3a; color: #fff; }
+  .cmm-edit { background: #1f2a44; border: 1px solid #1f2a44; color: #fff; }
+  .cmm-del { background: #b22020; border: 1px solid #b22020; color: #fff; }
+  .cmm-cancel { background: #efefef; border: 1px solid #999; color: #222; }
+</style>
 <div class="list-screen">
-<h2>&#45812;&#45817;&#51088; &#47560;&#49828;&#53552;</h2>
+<h2>담당자 마스터</h2>
 <form class="search-box" method="get">
-  <input type="text" class="search-input" name="q" value="{{ q }}" placeholder="예) 성명:홍길동 상태:투입 담당업무:MDM"><button type="submit">&#44160;&#49353;</button>
-  <span class="spacer"></span><button type="button" id="save-btn">&#51200;&#51109;</button><button type="button" id="add-btn">&#52628;&#44032;</button><button type="button" id="del-btn">&#49325;&#51228;</button>
+  <input type="text" class="search-input" name="q" value="{{ q }}" placeholder="예) 성명:홍길동 상태:투입 담당업무:MDM"><button type="submit">검색</button>
+  <span class="spacer"></span><button type="button" id="save-btn">저장</button><button type="button" id="add-btn">추가</button><button type="button" id="del-btn">삭제</button>
   <div class="excel-actions service-master-toolbar-actions">
-    <a class="icon-btn" href="?q={{ q }}&export=1" title="&#50641;&#49472; &#45796;&#50868;&#47196;&#46300;" aria-label="&#50641;&#49472; &#45796;&#50868;&#47196;&#46300;">&#8595;</a>
-    <button type="button" class="icon-btn" id="excel-import-btn" title="&#50641;&#49472; &#50629;&#47196;&#46300;" aria-label="&#50641;&#49472; &#50629;&#47196;&#46300;">&#8593;</button>
+    <a class="icon-btn" href="?q={{ q }}&export=1" title="엑셀 다운로드" aria-label="엑셀 다운로드">&#8595;</a>
+    <button type="button" class="icon-btn" id="excel-import-btn" title="엑셀 업로드" aria-label="엑셀 업로드">&#8593;</button>
   </div>
 </form>
 <form id="excel-import-form" method="post" enctype="multipart/form-data" style="display:none;">
@@ -20,8 +53,8 @@
 <form id="grid-form" method="post">{% csrf_token %}
 <input type="hidden" name="action" value="save"><input type="hidden" name="rows_json" id="rows-json"><input type="hidden" name="deleted_ids_json" id="deleted-json">
 <div class="wrap"><table id="grid"><thead><tr>
-<th><input type="checkbox" id="all"></th><th>ID</th><th>&#49457;&#47749;</th><th>&#50669;&#54624;</th><th>&#45812;&#45817;&#50629;&#47924;</th><th>&#49345;&#51452;&#50668;&#48512;</th>
-<th>&#49548;&#49549;</th><th>&#54924;&#49324;&#47749;</th><th>&#51204;&#54868;&#48264;&#54840;</th><th>&#45236;&#48512;&#47700;&#51068;</th><th>&#50808;&#48512;&#47700;&#51068;</th><th>&#49324;&#48264;</th><th>&#49457;&#48324;</th><th>&#49345;&#53468;</th><th>&#53804;&#51077;&#51068;</th><th>&#51333;&#47308;&#51068;</th>
+<th><input type="checkbox" id="all"></th><th>ID</th><th>성명</th><th>역할</th><th>담당업무</th><th>상주여부</th>
+<th>소속</th><th>회사명</th><th>전화번호</th><th>내부메일</th><th>외부메일</th><th>사번</th><th>성별</th><th>상태</th><th>투입일</th><th>종료일</th>
 </tr></thead><tbody>
 {% for p in items %}<tr>
 <td><input type="checkbox" class="row-check"></td>
@@ -31,7 +64,10 @@
 <option value=""></option>
 {% for opt in person_role_options %}<option value="{{ opt.code }}"{% if p.role_code and p.role_code.code == opt.code %} selected{% endif %}>{{ opt.name }}</option>{% endfor %}
 </select></td>
-<td><input data-field="assigned_service_names" list="service-name-list" value="{{ p.assigned_service_names }}"></td>
+<td class="cell-service-map">
+  <input type="hidden" data-field="assigned_service_names" value="{{ p.assigned_service_names }}">
+  <input type="text" class="service-map-display-input" readonly value="{{ p.assigned_service_names }}" title="클릭하여 담당업무(연결 서비스) 편집">
+</td>
 <td><select data-field="resident_type_code">
 <option value=""></option>
 {% for opt in resident_type_options %}<option value="{{ opt.code }}"{% if p.resident_type_code and p.resident_type_code.code == opt.code %} selected{% endif %}>{{ opt.name }}</option>{% endfor %}
@@ -54,29 +90,349 @@
 <td><input type="date" data-field="deployed_at" value="{{ p.deployed_at|date:'Y-m-d' }}"></td><td><input type="date" data-field="ended_at" value="{{ p.ended_at|date:'Y-m-d' }}"></td>
 </tr>{% endfor %}
 </tbody></table></div></form></div>
-<datalist id="service-name-list">{% for name in service_name_options %}<option value="{{ name }}"></option>{% endfor %}</datalist>
+
+<script id="services-all-data" type="application/json">{{ services_all_json|safe }}</script>
+
+<div id="psm-modal" class="modal-backdrop" role="dialog" aria-modal="true" aria-label="담당업무-서비스 매핑" style="display:none;">
+  <div class="modal-panel" style="width:600px;">
+    <div class="modal-head">
+      <h3 class="modal-title">담당업무 (연결 서비스) <span id="psm-trigger-label" style="color:#1f2a44; font-weight: normal; font-size: 12px;"></span></h3>
+    </div>
+    <div class="modal-body">
+      <div class="cmm-form-row">
+        <label for="psm-search-input">서비스명 검색</label>
+        <input id="psm-search-input" type="text" autocomplete="off" placeholder="서비스명 또는 서비스 ID">
+        <span id="psm-search-msg" class="cmm-msg"></span>
+      </div>
+      <div class="cmm-form-row">
+        <label for="psm-service-select">서비스 선택</label>
+        <select id="psm-service-select"></select>
+      </div>
+      <div>
+        <h4 style="margin: 10px 0 4px 0; font-size: 13px; color: #333;">현재 매핑된 서비스 (행 전체 · 클릭으로 포커스)</h4>
+        <ul id="psm-mapped-list" class="cmm-mapped-list"></ul>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <div class="cmm-foot-actions">
+        <button type="button" id="psm-cancel-btn" class="cmm-cancel">취소</button>
+        <button type="button" id="psm-del-btn" class="cmm-del">삭제</button>
+        <button type="button" id="psm-edit-btn" class="cmm-edit">수정</button>
+        <button type="button" id="psm-add-btn" class="cmm-add">추가</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
-(() => { const t=document.getElementById("grid"),f=document.getElementById("grid-form"),r=document.getElementById("rows-json"),d=document.getElementById("deleted-json"),del=[];
-const tbody=t.querySelector("tbody");
-const markRowDirty=(el)=>{const tr=el.closest("tr");const chk=tr?tr.querySelector(".row-check"):null;if(chk)chk.checked=true;};
-tbody.addEventListener("input",e=>{const el=e.target;if(el&&el.matches("[data-field]")&&el.type!=="hidden")markRowDirty(el);});
-tbody.addEventListener("change",e=>{const el=e.target;if(el&&el.matches("[data-field]")&&el.type!=="hidden")markRowDirty(el);});
-const serviceOptions=[...document.querySelectorAll("#service-name-list option")].map(o=>o.value).filter(Boolean);
-const serviceSet=new Set(serviceOptions);
-const normalize=s=>String(s||"").trim().replace(/\s+/g," ");
-const splitTokens=v=>String(v||"").split(",").map(x=>normalize(x)).filter(Boolean);
-const smartMatch=(token)=>{if(!token)return"";if(serviceSet.has(token))return token;const lower=token.toLowerCase();const exact=serviceOptions.find(s=>s.toLowerCase()===lower);if(exact)return exact;const starts=serviceOptions.filter(s=>s.toLowerCase().startsWith(lower));if(starts.length===1)return starts[0];if(starts.length>1){const exactWord=starts.find(s=>s.toLowerCase()===lower);return exactWord||starts[0];}const includes=serviceOptions.find(s=>s.toLowerCase().includes(lower));return includes||"";};
-const normalizeServiceInput=(el)=>{const tokens=splitTokens(el.value);const fixed=[];for(const tkn of tokens){const m=smartMatch(tkn);if(m)fixed.push(m);}el.value=[...new Set(fixed)].join(", ");};
-const normalizeLastToken=(el)=>{const raw=String(el.value||"");const parts=raw.split(",");if(parts.length===0){normalizeServiceInput(el);return;}const last=normalize(parts[parts.length-1]);if(!last){normalizeServiceInput(el);return;}const m=smartMatch(last);if(!m){normalizeServiceInput(el);return;}parts[parts.length-1]=m;const fixed=splitTokens(parts.join(",")).map(s=>smartMatch(s)||"").filter(Boolean);el.value=[...new Set(fixed)].join(", ");};
-const bindServiceAutocomplete=(scope)=>{scope.querySelectorAll('input[data-field="assigned_service_names"]').forEach(inp=>{if(inp.dataset.boundSvc==="1")return;inp.dataset.boundSvc="1";inp.setAttribute("list","service-name-list");inp.addEventListener("blur",()=>normalizeServiceInput(inp));inp.addEventListener("keydown",(e)=>{if(e.key==="Enter"){e.preventDefault();normalizeLastToken(inp);inp.blur();}});});};
-bindServiceAutocomplete(document);
-document.getElementById("all").onchange=e=>t.querySelectorAll(".row-check").forEach(x=>x.checked=e.target.checked);
-document.getElementById("add-btn").onclick=()=>{const tr=t.querySelector("tbody tr");if(!tr)return;const n=tr.cloneNode(true);n.querySelectorAll("input").forEach(i=>{if(i.dataset.field==="id"||i.dataset.field==="person_mgmt_no")i.value="";else i.value="";if(i.classList.contains("row-check"))i.checked=true;});const idCell=n.querySelector("td:nth-child(2) span");if(idCell)idCell.textContent="";n.querySelectorAll("select").forEach(s=>{s.value="";});t.querySelector("tbody").appendChild(n);bindServiceAutocomplete(n);};
-document.getElementById("del-btn").onclick=()=>t.querySelectorAll("tbody tr").forEach(tr=>{const c=tr.querySelector(".row-check");if(c&&c.checked){const id=tr.querySelector('[data-field="id"]').value;if(id)del.push(id);tr.remove();}});
-document.getElementById("save-btn").onclick=()=>{t.querySelectorAll('input[data-field="assigned_service_names"]').forEach(normalizeServiceInput);const rows=[...t.querySelectorAll("tbody tr")].filter(tr=>tr.querySelector(".row-check")?.checked).map(tr=>{const o={};tr.querySelectorAll("[data-field]").forEach(el=>{o[el.dataset.field]=el.value;});return o;});r.value=JSON.stringify(rows);d.value=JSON.stringify(del);f.submit();};})();
-(()=>{const importBtn=document.getElementById("excel-import-btn"),importInput=document.getElementById("excel-file-input"),importForm=document.getElementById("excel-import-form");importBtn?.addEventListener("click",()=>importInput?.click());importInput?.addEventListener("change",()=>{if(importInput.files&&importInput.files.length>0)importForm.submit();});})();
+(() => {
+  const t = document.getElementById("grid");
+  const f = document.getElementById("grid-form");
+  const r = document.getElementById("rows-json");
+  const d = document.getElementById("deleted-json");
+  const del = [];
+  const tbody = t.querySelector("tbody");
+  const markRowDirty = (el) => {
+    const tr = el && el.closest ? el.closest("tr") : null;
+    const chk = tr ? tr.querySelector(".row-check") : null;
+    if (chk) chk.checked = true;
+  };
+  tbody.addEventListener("input", (e) => {
+    const el = e.target;
+    if (el && el.matches("[data-field]") && el.type !== "hidden") markRowDirty(el);
+  });
+  tbody.addEventListener("change", (e) => {
+    const el = e.target;
+    if (el && el.matches("[data-field]") && el.type !== "hidden") markRowDirty(el);
+  });
+  document.getElementById("all").addEventListener("change", (e) => {
+    t.querySelectorAll(".row-check").forEach((x) => { x.checked = e.target.checked; });
+  });
+  document.getElementById("add-btn").addEventListener("click", () => {
+    const tr = t.querySelector("tbody tr");
+    if (!tr) return;
+    const n = tr.cloneNode(true);
+    n.querySelectorAll("input,select").forEach((i) => {
+      if (i.classList && i.classList.contains("row-check")) {
+        i.checked = true;
+        return;
+      }
+      i.value = "";
+    });
+    const idCell = n.querySelector("td:nth-child(2) span");
+    if (idCell) idCell.textContent = "";
+    n.querySelectorAll("select").forEach((s) => { s.value = ""; });
+    n.querySelectorAll("td.cell-service-map input").forEach((i) => { i.value = ""; });
+    t.querySelector("tbody").appendChild(n);
+  });
+  document.getElementById("del-btn").addEventListener("click", () => {
+    t.querySelectorAll("tbody tr").forEach((tr) => {
+      const c = tr.querySelector(".row-check");
+      if (c && c.checked) {
+        const hid = tr.querySelector('[data-field="id"]');
+        if (hid && hid.value) del.push(hid.value);
+        tr.remove();
+      }
+    });
+  });
+  document.getElementById("save-btn").addEventListener("click", () => {
+    const rows = [...t.querySelectorAll("tbody tr")]
+      .filter((tr) => tr.querySelector(".row-check")?.checked)
+      .map((tr) => {
+        const o = {};
+        tr.querySelectorAll("[data-field]").forEach((el) => { o[el.dataset.field] = el.value; });
+        return o;
+      });
+    r.value = JSON.stringify(rows);
+    d.value = JSON.stringify(del);
+    f.submit();
+  });
+  const importBtn = document.getElementById("excel-import-btn");
+  const importInput = document.getElementById("excel-file-input");
+  const importForm = document.getElementById("excel-import-form");
+  importBtn?.addEventListener("click", () => importInput?.click());
+  importInput?.addEventListener("change", () => {
+    if (importInput.files && importInput.files.length > 0) importForm.submit();
+  });
+})();
+(() => {
+  const allNode = document.getElementById("services-all-data");
+  let servicesAll = [];
+  try { servicesAll = JSON.parse(allNode?.textContent || "[]"); } catch (e) { servicesAll = []; }
+
+  const byNameExact = new Map();
+  const byMgmtNo = new Map();
+  servicesAll.forEach((s) => {
+    const name = String(s.name || "").trim();
+    const mgmt = String(s.service_mgmt_no || "").trim();
+    if (name) byNameExact.set(name, name);
+    if (mgmt) byMgmtNo.set(mgmt, name);
+  });
+
+  function canonicalServiceName(token) {
+    const t = String(token || "").trim();
+    if (!t) return "";
+    if (byNameExact.has(t)) return t;
+    if (byMgmtNo.has(t)) return byMgmtNo.get(t);
+    const lower = t.toLowerCase();
+    const hit = servicesAll.find((s) => String(s.name || "").trim().toLowerCase() === lower);
+    return hit ? String(hit.name || "").trim() : "";
+  }
+
+  function splitNamesFromHidden(val) {
+    return String(val || "")
+      .split(",")
+      .map((x) => String(x || "").trim())
+      .filter(Boolean)
+      .map((x) => canonicalServiceName(x) || x)
+      .filter((x, i, arr) => arr.indexOf(x) === i);
+  }
+
+  function writeRowServiceNames(row, names) {
+    const uniq = [...new Set(names.map((x) => String(x || "").trim()).filter(Boolean))];
+    const val = uniq.join(", ");
+    const hidden = row.querySelector('td.cell-service-map [data-field="assigned_service_names"]');
+    const display = row.querySelector("td.cell-service-map .service-map-display-input");
+    if (hidden) hidden.value = val;
+    if (display) display.value = val;
+    markRowDirty(hidden || display);
+  }
+
+  const modal = document.getElementById("psm-modal");
+  const elTriggerLabel = document.getElementById("psm-trigger-label");
+  const elSearch = document.getElementById("psm-search-input");
+  const elMsg = document.getElementById("psm-search-msg");
+  const elServSel = document.getElementById("psm-service-select");
+  const elMappedList = document.getElementById("psm-mapped-list");
+  const elBtnCancel = document.getElementById("psm-cancel-btn");
+  const elBtnAdd = document.getElementById("psm-add-btn");
+  const elBtnEdit = document.getElementById("psm-edit-btn");
+  const elBtnDel = document.getElementById("psm-del-btn");
+
+  const escapeHtml = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
+
+  function clearMsg() { elMsg.className = "cmm-msg"; elMsg.textContent = ""; }
+  function setMsg(text, level) {
+    elMsg.className = "cmm-msg " + (level || "");
+    elMsg.textContent = text || "";
+  }
+
+  const state = {
+    row: null,
+    workingNames: [],
+    focusName: "",
+  };
+
+  function markRowDirty(el) {
+    const tr = el && el.closest ? el.closest("tr") : null;
+    const chk = tr ? tr.querySelector(".row-check") : null;
+    if (chk) chk.checked = true;
+  }
+
+  function rebuildServiceSelect(query) {
+    const q = String(query || "").trim().toLowerCase();
+    const list = servicesAll.filter((s) => {
+      if (!q) return true;
+      const nm = String(s.name || "").toLowerCase();
+      const mg = String(s.service_mgmt_no || "").toLowerCase();
+      return nm.includes(q) || mg.includes(q);
+    });
+    elServSel.innerHTML = list
+      .map((s) => {
+        const nm = escapeHtml(s.name || "");
+        const mg = escapeHtml(s.service_mgmt_no || "");
+        const val = escapeHtml(String(s.name || "").trim());
+        return `<option value="${val}">${nm} (${mg})</option>`;
+      })
+      .join("");
+    if (!list.length) {
+      elServSel.innerHTML = '<option value="">(일치하는 서비스 없음)</option>';
+    }
+    return list;
+  }
+
+  function renderMapped() {
+    elMappedList.innerHTML = "";
+    if (!state.workingNames.length) {
+      const li = document.createElement("li");
+      li.textContent = "(매핑된 서비스가 없습니다)";
+      elMappedList.appendChild(li);
+      return;
+    }
+    state.workingNames.forEach((name) => {
+      const li = document.createElement("li");
+      li.dataset.name = name;
+      const focus = state.focusName === name;
+      li.className = focus ? "focus" : "";
+      li.innerHTML = `<span class="focus-mark">${focus ? "▶" : ""}</span><span>${escapeHtml(name)}</span>`;
+      li.addEventListener("click", () => {
+        state.focusName = name;
+        elSearch.value = "";
+        rebuildServiceSelect("");
+        const opt = [...elServSel.options].find((o) => o.value === name);
+        if (opt) elServSel.value = name;
+        renderMapped();
+        clearMsg();
+      });
+      elMappedList.appendChild(li);
+    });
+  }
+
+  function openForRow(row) {
+    const hidden = row.querySelector('td.cell-service-map [data-field="assigned_service_names"]');
+    state.row = row;
+    state.workingNames = splitNamesFromHidden(hidden ? hidden.value : "");
+    state.focusName = state.workingNames[0] || "";
+    const pno = row.querySelector('[data-field="person_mgmt_no"]')?.value || "";
+    elTriggerLabel.textContent = pno ? `(담당자: ${pno})` : "";
+    elSearch.value = "";
+    clearMsg();
+    const matches = rebuildServiceSelect("");
+    if (matches.length) {
+      if (state.focusName && [...elServSel.options].some((o) => o.value === state.focusName)) {
+        elServSel.value = state.focusName;
+      } else {
+        elServSel.selectedIndex = 0;
+      }
+      setMsg(`${matches.length}개 서비스 표시 (검색으로 좁힐 수 있음)`, "ok");
+    } else {
+      setMsg("등록된 서비스가 없습니다", "err");
+    }
+    renderMapped();
+    modal.style.display = "flex";
+    setTimeout(() => elSearch.focus(), 0);
+  }
+
+  function closeModal() { modal.style.display = "none"; }
+
+  function currentSelectedName() {
+    return String(elServSel.value || "").trim();
+  }
+
+  document.querySelector("#grid tbody").addEventListener("click", (e) => {
+    const cell = e.target.closest("td.cell-service-map");
+    if (!cell) return;
+    const row = cell.closest("tr");
+    if (!row) return;
+    openForRow(row);
+  });
+
+  elSearch.addEventListener("input", () => {
+    const list = rebuildServiceSelect(elSearch.value);
+    if (!list.length) {
+      setMsg("일치하는 서비스가 없습니다", "err");
+      return;
+    }
+    setMsg(`${list.length}개 일치`, "ok");
+    elServSel.selectedIndex = 0;
+  });
+
+  elServSel.addEventListener("change", () => { clearMsg(); });
+
+  elBtnCancel.addEventListener("click", closeModal);
+  modal.addEventListener("click", (e) => { if (e.target === modal) closeModal(); });
+  document.addEventListener("keydown", (e) => {
+    if (modal.style.display === "none") return;
+    if (e.key === "Escape") closeModal();
+  });
+
+  elBtnAdd.addEventListener("click", () => {
+    if (!state.row) { closeModal(); return; }
+    const nm = currentSelectedName();
+    if (!nm) { setMsg("선택된 서비스가 없습니다", "err"); return; }
+    const canon = canonicalServiceName(nm) || nm;
+    if (state.workingNames.includes(canon)) {
+      setMsg("이미 매핑된 서비스입니다", "warn");
+      return;
+    }
+    state.workingNames.push(canon);
+    writeRowServiceNames(state.row, state.workingNames);
+    state.focusName = canon;
+    renderMapped();
+    closeModal();
+  });
+
+  elBtnEdit.addEventListener("click", () => {
+    if (!state.row) { closeModal(); return; }
+    const newName = canonicalServiceName(currentSelectedName()) || currentSelectedName();
+    if (!newName) { setMsg("선택된 서비스가 없습니다", "err"); return; }
+    if (!state.focusName) {
+      if (state.workingNames.includes(newName)) { setMsg("이미 매핑된 서비스입니다", "warn"); return; }
+      state.workingNames.push(newName);
+    } else {
+      if (newName === state.focusName) { closeModal(); return; }
+      const idx = state.workingNames.indexOf(state.focusName);
+      if (idx >= 0) {
+        if (state.workingNames.includes(newName)) {
+          state.workingNames.splice(idx, 1);
+        } else {
+          state.workingNames[idx] = newName;
+        }
+      } else if (!state.workingNames.includes(newName)) {
+        state.workingNames.push(newName);
+      }
+      state.focusName = newName;
+    }
+    writeRowServiceNames(state.row, state.workingNames);
+    renderMapped();
+    closeModal();
+  });
+
+  elBtnDel.addEventListener("click", () => {
+    if (!state.row) { closeModal(); return; }
+    const target = state.focusName || currentSelectedName();
+    const canon = canonicalServiceName(target) || target;
+    if (!canon) { setMsg("삭제할 서비스를 목록에서 선택하거나 아래에서 고르세요", "err"); return; }
+    if (!state.workingNames.includes(canon)) {
+      setMsg("매핑되어 있지 않은 서비스입니다", "warn");
+      return;
+    }
+    state.workingNames = state.workingNames.filter((x) => x !== canon);
+    state.focusName = state.workingNames[0] || "";
+    writeRowServiceNames(state.row, state.workingNames);
+    renderMapped();
+    closeModal();
+  });
+})();
 </script>
 {% endblock %}
-
-
-

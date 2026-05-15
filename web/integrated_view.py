@@ -1,6 +1,6 @@
 """시스템 통합정보 화면.
 
-좌측 트리에서 선택한 마스터(서비스/구성정보/컴포넌트/담당자)의 컬럼·속성을 조합해
+좌측 트리에서 선택한 마스터(구성정보/서비스/담당자/컴포넌트)의 컬럼·속성을 조합해
 개인화된 통합 View를 만들어 보여준다.
 
 설계 원칙
@@ -37,7 +37,11 @@ from masters.models import (
 )
 from web.models import IntegratedViewPreset
 from web.views import normalize_service_search_key
-from masters.service_person_grid import SERVICE_PERSON_GRID_COLUMNS
+from masters.service_person_grid import (
+    SERVICE_DUTY_ATTRIBUTE_CODE,
+    SERVICE_DUTY_ATTRIBUTE_LABEL,
+    SERVICE_PERSON_GRID_COLUMNS,
+)
 
 # 서비스 마스터 검색과 동일한 `키:값` 토큰 + `키=값` 지원 (값은 공백 없는 토큰)
 INTEGRATED_TERM_PATTERN = re.compile(r"([^\s:=][^:=]*?)\s*(?:[:=])\s*([^\s]+)")
@@ -47,36 +51,45 @@ TEXT_FILTER_SLOT_COUNT = 5
 # 서비스의 역할 슬롯 ServiceAttribute attribute_code 집합 (값이 PersonMaster.pk CSV)
 SERVICE_PERSON_ATTRIBUTE_CODES: set[str] = {c["attribute_code"] for c in SERVICE_PERSON_GRID_COLUMNS}
 _SERVICE_PERSON_LABEL_BY_CODE: dict[str, str] = {c["attribute_code"]: c["label"] for c in SERVICE_PERSON_GRID_COLUMNS}
+_SERVICE_ATTR_LABEL_OVERRIDE: dict[str, str] = {SERVICE_DUTY_ATTRIBUTE_CODE: SERVICE_DUTY_ATTRIBUTE_LABEL}
 _SERVICE_PERSON_ORDER: list[str] = [c["attribute_code"] for c in SERVICE_PERSON_GRID_COLUMNS]
 
 
 def _canonical_service_person_field_order(selected_fields: list[FieldDef]) -> list[FieldDef]:
-    """선택된 필드 중 서비스 담당자 속성 4종은 서비스 마스터 그리드 순서(DT팀→관리자→운영자→Infra담당자)로 묶어 정렬."""
+    """선택 필드 중 서비스 속성: 담당현업 → 담당자 4종 순으로 한 덩어리로 묶어 정렬."""
+    duty_fs = {
+        f
+        for f in selected_fields
+        if f.group == "service" and f.source == "attribute" and f.attribute_code == SERVICE_DUTY_ATTRIBUTE_CODE
+    }
     person_set = {
         f
         for f in selected_fields
         if f.group == "service" and f.source == "attribute" and f.attribute_code in SERVICE_PERSON_ATTRIBUTE_CODES
     }
-    if not person_set:
+    if not duty_fs and not person_set:
         return selected_fields
     by_code = {f.attribute_code: f for f in person_set}
     persons_sorted = [by_code[c] for c in _SERVICE_PERSON_ORDER if c in by_code]
-    first_idx = next(i for i, f in enumerate(selected_fields) if f in person_set)
+    duty_sorted = sorted(duty_fs, key=lambda f: f.attribute_code)
+    special = duty_fs | person_set
+    first_special_idx = next(i for i, f in enumerate(selected_fields) if f in special)
     out: list[FieldDef] = []
     for i, f in enumerate(selected_fields):
-        if i == first_idx:
+        if i == first_special_idx:
+            out.extend(duty_sorted)
             out.extend(persons_sorted)
-        if f not in person_set:
+        if f not in special:
             out.append(f)
     return out
 
 
 # 그룹 키 → (라벨, base 모델). 화면 트리 순서.
 GROUPS: list[tuple[str, str]] = [
-    ("service", "서비스"),
     ("configuration", "구성정보"),
-    ("component", "컴포넌트"),
+    ("service", "서비스"),
     ("person", "담당자"),
+    ("component", "컴포넌트"),
 ]
 
 
@@ -129,6 +142,7 @@ SERVICE_FIELDS: list[FieldDef] = [
     _str_field("service", "service_mgmt_no", "서비스ID"),
     _str_field("service", "name", "서비스명"),
     _fk_code_field("service", "category_code", "분류"),
+    _fk_code_field("service", "ito_code", "ITO"),
     _fk_code_field("service", "build_type_code", "구축"),
     _fk_code_field("service", "itgc_code", "ITGC"),
     _fk_code_field("service", "service_grade_code", "등급"),
@@ -141,6 +155,7 @@ SERVICE_FIELDS: list[FieldDef] = [
 CONFIG_FIELDS: list[FieldDef] = [
     _str_field("configuration", "asset_mgmt_no", "구성ID"),
     _str_field("configuration", "hostname", "구성명"),
+    _str_field("configuration", "connected_services_label", "연결서비스"),
     _fk_code_field("configuration", "server_type_code", "구성유형"),
     _fk_code_field("configuration", "operation_dev_code", "운영/개발"),
     _fk_code_field("configuration", "infra_type_code", "인프라구분"),
@@ -223,7 +238,12 @@ def build_attribute_fields() -> dict[str, list[FieldDef]]:
         group = _ATTR_TARGET_TO_GROUP.get(target)
         if not group:
             continue
-        label = _SERVICE_PERSON_LABEL_BY_CODE.get(ac.attribute_code) or ac.name or ac.attribute_code
+        label = (
+            _SERVICE_ATTR_LABEL_OVERRIDE.get(ac.attribute_code)
+            or _SERVICE_PERSON_LABEL_BY_CODE.get(ac.attribute_code)
+            or ac.name
+            or ac.attribute_code
+        )
         fd = FieldDef(
             field_id=f"{group}.attr.{ac.attribute_code}",
             group=group,
@@ -238,10 +258,15 @@ def build_attribute_fields() -> dict[str, list[FieldDef]]:
             out[group].append(fd)
     order_idx = {c: i for i, c in enumerate(_SERVICE_PERSON_ORDER)}
     persons = [f for f in service_attrs if f.attribute_code in SERVICE_PERSON_ATTRIBUTE_CODES]
-    others = [f for f in service_attrs if f.attribute_code not in SERVICE_PERSON_ATTRIBUTE_CODES]
+    duty_fields = [f for f in service_attrs if f.attribute_code == SERVICE_DUTY_ATTRIBUTE_CODE]
+    others = [
+        f
+        for f in service_attrs
+        if f.attribute_code not in SERVICE_PERSON_ATTRIBUTE_CODES and f.attribute_code != SERVICE_DUTY_ATTRIBUTE_CODE
+    ]
     persons.sort(key=lambda f: order_idx.get(f.attribute_code, 999))
     others.sort(key=lambda f: f.attribute_code)
-    out["service"] = persons + others
+    out["service"] = duty_fields + persons + others
     from core.models import Code as _Code
 
     type_codes = list(
@@ -310,7 +335,12 @@ def _build_field_index() -> dict[str, FieldDef]:
 # ──────────────────────────────────────────────────────────────────
 def _service_base_qs() -> QuerySet:
     return ServiceMaster.objects.select_related(
-        "category_code", "status_code", "build_type_code", "itgc_code", "service_grade_code"
+        "category_code",
+        "ito_code",
+        "status_code",
+        "build_type_code",
+        "itgc_code",
+        "service_grade_code",
     ).prefetch_related("service_attributes__attribute_code")
 
 
@@ -542,6 +572,9 @@ def _orm_filter_for_field(field: FieldDef, op: str, value: Any) -> Q | None:
     if field.source != "column":
         return None
     accessor = field.accessor
+    # ConfigurationMaster.connected_services_label — DB 컬럼이 아닌 프로퍼티
+    if accessor == "connected_services_label":
+        return None
     base = accessor.split("__")[0]
     is_fk_code = accessor.endswith("__name")
     target = accessor if is_fk_code else accessor
